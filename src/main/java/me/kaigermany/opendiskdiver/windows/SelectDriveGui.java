@@ -2,13 +2,14 @@ package me.kaigermany.opendiskdiver.windows;
 
 import java.util.ArrayList;
 
+import me.kaigermany.opendiskdiver.data.DriveInfo;
 import me.kaigermany.opendiskdiver.gui.Screen;
 import me.kaigermany.opendiskdiver.windows.console.ConsoleInterface;
 import me.kaigermany.opendiskdiver.windows.console.ConsoleInterface.Pair;
 
 public class SelectDriveGui {
 	private Screen screen;
-	private ArrayList<WindowsDrives.DriveInfo> drives;
+	private ArrayList<DriveInfo> drives;
 	private ConsoleInterface console;
 	private int selectedSlot = 0;
 	
@@ -19,7 +20,7 @@ public class SelectDriveGui {
 		System.out.println(drives);
 	}
 
-	public WindowsDrives.DriveInfo awaitSelection() {
+	public DriveInfo awaitSelection() {
 		while (true) {
 			drawGui();
 			Pair<Integer, String> key = console.readKey();
@@ -48,7 +49,7 @@ public class SelectDriveGui {
 			String foregroundColor = selected ? Screen.BLACK : Screen.WHITE;
 			String backgroundColor = selected ? Screen.WHITE : Screen.BLACK;
 			
-			WindowsDrives.DriveInfo di = drives.get(i);
+			DriveInfo di = drives.get(i);
 			
 			screen.write(String.valueOf(i), 0, i, foregroundColor, backgroundColor);
 			screen.write(toHumanReadableFileSize(di.size), 4, i, foregroundColor, backgroundColor);
