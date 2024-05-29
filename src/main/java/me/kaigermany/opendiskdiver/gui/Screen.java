@@ -15,6 +15,10 @@ public class Screen {
 	
 	public Screen(int w, int h, ConsoleInterface console){
 		this.console = console;
+		resize(w, h);
+	}
+	
+	public void resize(int w, int h){
 		this.w = w;
 		this.h = h;
 		map = new char[w*h];

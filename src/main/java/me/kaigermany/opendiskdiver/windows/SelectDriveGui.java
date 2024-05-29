@@ -18,6 +18,7 @@ public class SelectDriveGui {
 		this.console = console;
 		this.drives = WindowsDrives.listDrives();
 		System.out.println(drives);
+		screen.resize(50, drives.size());
 	}
 
 	public DriveInfo awaitSelection() {
