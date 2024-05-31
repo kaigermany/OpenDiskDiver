@@ -2,6 +2,7 @@ package me.kaigermany.opendiskdiver.data.partition;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
@@ -30,7 +31,7 @@ public class PartitionReader {
 				int off = 494 - (index * 16);
 				int offset = readInt32(sector, off + 8);
 				if (offset != 0){
-					out.add(new Partition(offset, readInt32(sector, off + 12), sector[off + 4] & 0xFF));
+					out.add(new Partition(offset, readInt32(sector, off + 12), sector[off + 4] & 0xFF, source));
 				}
 			}
 		} else if ((sector[252] & 0xFF) == 0xAA && (sector[253] & 0xFF) == 0x55) {
@@ -38,7 +39,7 @@ public class PartitionReader {
 				int off = 254 + (index * 16);
 				int offset = readInt32(sector, off + 8);
 				if (offset != 0){
-					out.add(new Partition(offset, readInt32(sector, off + 12), sector[off + 4] & 0xFF));
+					out.add(new Partition(offset, readInt32(sector, off + 12), sector[off + 4] & 0xFF, source));
 				}
 			}
 		} else {
@@ -46,7 +47,7 @@ public class PartitionReader {
 				int off = 446 + (index * 16);
 				int offset = readInt32(sector, off + 8);
 				if (offset != 0){
-					out.add(new Partition(offset, readInt32(sector, off + 12), sector[off + 4] & 0xFF));
+					out.add(new Partition(offset, readInt32(sector, off + 12), sector[off + 4] & 0xFF, source));
 				}
 			}
 		}
@@ -76,8 +77,8 @@ public class PartitionReader {
 				continue;
 			}
 			char[] nameBuf = new char[72 / 2];
-			ByteBuffer.wrap(sector, off + 56, 72).order(java.nio.ByteOrder.LITTLE_ENDIAN).asCharBuffer().get(nameBuf);
-			out.add(new Partition(partitionOffset, partitionLen, new String(nameBuf)));
+			ByteBuffer.wrap(sector, off + 56, 72).order(ByteOrder.LITTLE_ENDIAN).asCharBuffer().get(nameBuf);
+			out.add(new Partition(partitionOffset, partitionLen, new String(nameBuf), source));
 		}
 		return out;
 	}
