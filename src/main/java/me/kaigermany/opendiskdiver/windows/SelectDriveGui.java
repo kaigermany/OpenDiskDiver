@@ -85,8 +85,10 @@ public class SelectDriveGui {
 		long beforeComma = bytes;
 		long afterComma = bytes * 1000;
 		// float check = bytes;
-
-		while (beforeComma / 1024 > 0) {
+		
+		//bugfix where 1072693248 got interpreted as 1023, but the size limitations forced it to ":23 MB"
+		//instead of "1023 MB" but thats too long, so it must be "0.99 GB".
+		while (beforeComma /* / 1024 > 0*/ >= 1000) {
 			beforeComma /= 1024;
 			afterComma /= 1024;
 			steps++;
