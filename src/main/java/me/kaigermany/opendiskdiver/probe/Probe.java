@@ -4,10 +4,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 
-import me.kaigermany.opendiskdiver.data.Reader;
-
 public class Probe {
 	private static ArrayList<ProbeFunction> probeFunctions = new ArrayList<ProbeFunction>();
+
+	public static void regiterProbeTester(ProbeFunction func){
+		probeFunctions.add(func);
+	}
 	
 	public static ProbeResult detectType(byte[] probeBytes) {
 		HashMap<ProbeFunction, Float> results = new HashMap<ProbeFunction, Float>(probeFunctions.size());
@@ -33,42 +35,5 @@ public class Probe {
 			}
 		});
 		return list;
-	}
-	
-	public static void regiterProbeTester(ProbeFunction func){
-		probeFunctions.add(func);
-	}
-	
-	
-	public static class ProbeResult {
-		HashMap<ProbeFunction, Float> results;
-		ArrayList<ProbeFunction> sortedResults;
-		
-		public ProbeResult(HashMap<ProbeFunction, Float> results, ArrayList<ProbeFunction> sortedResults) {
-			this.results = results;
-			this.sortedResults = sortedResults;
-		}
-		
-		@Override
-		public String toString(){
-			StringBuilder sb = new StringBuilder(4096).append("ProbeResult: ").append(sortedResults.size()).append(" possible type");
-			
-			if(sortedResults.size() == 0) return sb.append("s!").toString();
-			
-			if(sortedResults.size() > 1) sb.append('s');
-			
-			sb.append(": [");
-			for(ProbeFunction func : sortedResults){
-				int score = (int)(results.get(func) * 100F);
-				sb.append("\n\t").append(func.getName()).append(": ").append(score).append('%');
-			}
-			return sb.append("\n]").toString();
-		}
-	}
-
-	public static interface ProbeFunction {
-		float probe(byte[] sampleData) throws Throwable;
-		String getName();
-		Reader getReader();
 	}
 }
