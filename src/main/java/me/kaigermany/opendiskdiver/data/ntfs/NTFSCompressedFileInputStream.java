@@ -16,16 +16,10 @@ public class NTFSCompressedFileInputStream extends InputStream {
 	private ReadableSource source;
 
 	public NTFSCompressedFileInputStream(NtfsStream stream, NtfsConfig config, ReadableSource source) {
-		// this.ntfs = ntfs;
-		// raf = new RandomAccessFile("\\\\.\\" + ntfs.targetDrive + ":", "r");
-		// this.raf = ntfs.raf;
 		this.source = source;
-		maxLen = stream.Size;
+		this.maxLen = stream.Size;
+		this.streamMap = new ArrayList<long[]>();
 		long[] out = stream.getFragments();
-		streamMap = new ArrayList<long[]>();
-		// long bytesLeft = ntfs.clusterSize;
-		// final long _16MB = largeCache ? (((1L << 20) * 64L) /
-		// ntfs.clusterSize) : 32;
 		for (int i = 0; i < out.length - 2; i += 2) {
 			long vClustor = out[i];
 			long rClustor = out[i + 1];
@@ -62,7 +56,7 @@ public class NTFSCompressedFileInputStream extends InputStream {
 				return -1;
 			long[] offsetAndLen = streamMap.remove(0);
 			byte[] rawData = readAt(offsetAndLen[0], (int) offsetAndLen[1], source);
-			currentBuffer = rawData;
+			currentBuffer = decompressBlocks(rawData);;
 			bufferOffset = 0;
 		}
 		int maxLen = Math.min(len, currentBuffer.length - bufferOffset);
@@ -73,6 +67,14 @@ public class NTFSCompressedFileInputStream extends InputStream {
 		int l2 = read(buffer, offset + maxLen, len - maxLen);
 		if (l2 == -1) return maxLen;
 		return maxLen + l2;
+	}
+	
+	private static byte[] decompressBlocks(byte[] compressedSource) throws IOException {
+		int size = LZNT1.CalcDecompressesSize(compressedSource, 0, compressedSource.length);
+		byte[] out = new byte[size];
+		int len = LZNT1.Decompress(compressedSource, 0, compressedSource.length, out, 0);
+		if(len != size) throw new IOException("unexpected sizes: prediced:" + size + ", got: " + len);
+		return out;
 	}
 
 	public static class LZNT1 {// https://github.com/perpetual-motion/discutils/blob/master/src/Ntfs/LZNT1.cs
@@ -167,6 +169,62 @@ public class NTFSCompressedFileInputStream extends InputStream {
 					// with data decompressed so far.
 					if (decompressedOffset + destIdx + FixedBlockSize > decompressed.length) {
 						return destIdx;
+					}
+				}
+			}
+
+			return destIdx;
+		}
+		
+		public static int CalcDecompressesSize(byte[] source, int sourceOffset, int sourceLength) {
+			int sourceIdx = 0;
+			int destIdx = 0;
+
+			while (sourceIdx < sourceLength) {
+				int header = (source[sourceOffset + sourceIdx] & 0xFF) | (((source[sourceOffset + sourceIdx + 1]) & 0xFF) << 8);
+				sourceIdx += 2;
+
+				// Look for null-terminating sub-block header
+				if (header == 0) {
+					break;
+				}
+
+				if ((header & SubBlockIsCompressedFlag) == 0) {
+					int blockSize = (header & SubBlockSizeMask) + 1;
+					sourceIdx += blockSize;
+					destIdx += blockSize;
+				} else {
+					// compressed
+					int destSubBlockStart = destIdx;
+					int srcSubBlockEnd = sourceIdx + (header & SubBlockSizeMask) + 1;
+					while (sourceIdx < srcSubBlockEnd) {
+						byte tag = source[sourceOffset + sourceIdx];
+						++sourceIdx;
+
+						for (int token = 0; token < 8; ++token) {
+							// We might have hit the end of the sub block
+							// whilst still working though
+							// a tag - abort if we have...
+							if (sourceIdx >= srcSubBlockEnd) {
+								break;
+							}
+
+							if ((tag & 1) == 0) {
+								++destIdx;
+								++sourceIdx;
+							} else {
+								int lengthBits = (16 - s_compressionBits[destIdx - destSubBlockStart]);
+								int lengthMask = ((1 << lengthBits) - 1);
+
+								int phraseToken = (source[sourceOffset + sourceIdx] & 0xFF) | (((source[sourceOffset + sourceIdx + 1]) & 0xFF) << 8);
+								sourceIdx += 2;
+
+								int length = (phraseToken & lengthMask) + 3;
+								destIdx += length;
+							}
+
+							tag >>= 1;
+						}
 					}
 				}
 			}
