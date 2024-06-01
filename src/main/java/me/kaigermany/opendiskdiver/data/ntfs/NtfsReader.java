@@ -7,9 +7,12 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashMap;
 
+import me.kaigermany.opendiskdiver.data.Reader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
+import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
+import me.kaigermany.opendiskdiver.utils.MathUtils;
 
-public class NtfsReader {
+public class NtfsReader implements Reader {
 	public static final int AttributeType_AttributeData = 0x80;
 	public static final int AttributeType_AttributeAttributeList = 0x20;
 	public static final int ROOTDIRECTORY = 5;
@@ -18,7 +21,9 @@ public class NtfsReader {
 	public NtfsConfig config;
 	public HashMap<String, NtfsNode> fileMap;
 	
-	public NtfsReader(ReadableSource source) throws IOException {
+	public NtfsReader(){}
+	
+	public void read(ReadableSource source) throws IOException {
 		config = new NtfsConfig(source);
 		NtfsNode[] nodes = readMFT(source);
 		fileMap = convertNodesToFiles(nodes);
@@ -80,7 +85,7 @@ public class NtfsReader {
 		NtfsStream mftStream = null;
 		{//step 1: read MFT entry
 			
-			byte[] mftEntryBytes = new byte[ (int)clampExp(config.BytesPerMftRecord, 512) ]; //align towards 512
+			byte[] mftEntryBytes = new byte[ (int)MathUtils.clampExp(config.BytesPerMftRecord, 512) ]; //align towards 512
 			source.readSectors(config.MFT_Offset * config.clusterSize / 512, mftEntryBytes.length / 512, mftEntryBytes);
 			
 			RawNtfsNode temp = new RawNtfsNode(mftEntryBytes, config);
@@ -132,8 +137,8 @@ public class NtfsReader {
 		
 
 		public NtfsNode ProcessMftRecord(byte[] data, int length, NtfsStream MftStream, NtfsConfig config, ReadableSource source, long nodeIndex, RawNtfsNode[] rawNodes) throws IOException {
-			int AttributeOffset = read16(data, 20);
-			int Flags = read16(data, 22);
+			int AttributeOffset = ByteArrayUtils.read16(data, 20);
+			int Flags = ByteArrayUtils.read16(data, 22);
 			
 	        NtfsNode node = new NtfsNode(nodeIndex, config, source);
 	        
@@ -151,8 +156,8 @@ public class NtfsReader {
 		
 		
 		public boolean ProcessMftRecordSpecial(NtfsNode node, byte[] data, int length, NtfsStream MftStream, NtfsConfig config, ReadableSource source, long nodeIndex, RawNtfsNode[] rawNodes) throws IOException {
-			int AttributeOffset = read16(data, 20);
-			int Flags = read16(data, 22);
+			int AttributeOffset = ByteArrayUtils.read16(data, 20);
+			int Flags = ByteArrayUtils.read16(data, 22);
 			
 	        
 	        
@@ -182,8 +187,8 @@ public class NtfsReader {
 			//System.out.println("BufLength="+BufLength);
 	        for(; AttributeOffset < BufLength; AttributeOffset += attribute_Length){
 	        	int offset = AttributeOffset+ptr_offset;
-	        	int attribute_AttributeType = read32(ptr, offset);
-	        	attribute_Length = read32(ptr, offset+4);
+	        	int attribute_AttributeType = ByteArrayUtils.read32(ptr, offset);
+	        	attribute_Length = ByteArrayUtils.read32(ptr, offset+4);
 	        	//System.out.println((AttributeOffset + attribute_Length) + " >= " + BufLength + " ?");
 	        	if(AttributeOffset + attribute_Length >= BufLength) break;
 	            //attribute = new Attribute(ptr, AttributeOffset +ptr_offset);
@@ -194,8 +199,8 @@ public class NtfsReader {
 
 	        	byte attribute_Nonresident = ptr[offset+8];
 	        	byte attribute_NameLength = ptr[offset+9];
-	        	int attribute_NameOffset = read16(ptr, offset+10);
-	        	int attribute_Flags = read16(ptr, offset+12);//0x0001 = Compressed, 0x4000 = Encrypted, 0x8000 = Sparse
+	        	int attribute_NameOffset = ByteArrayUtils.read16(ptr, offset+10);
+	        	int attribute_Flags = ByteArrayUtils.read16(ptr, offset+12);//0x0001 = Compressed, 0x4000 = Encrypted, 0x8000 = Sparse
 	        	//int attribute_AttributeNumber = read16(ptr, offset+14);
 	        	node.isCompressed = (attribute_Flags & 0x0001) != 0;
 	        	node.isEncrypted = (attribute_Flags & 0x4000) != 0;
@@ -232,7 +237,7 @@ public class NtfsReader {
 	                        }
 	                        */
 	                        //node.ParentNodeIndex = ((attributeFileName.InodeNumberHighPart & 0xFFFF) << 32) | (attributeFileName.InodeNumberLowPart & 0xFFFFFFFF);
-	                        node.ParentNodeIndex = read48(ptr, offset2);
+	                        node.ParentNodeIndex = ByteArrayUtils.read48(ptr, offset2);
 	                        
 	                        if (attributeFileName.NameType == 1 || node.Name == null){
 	                        	node.Name = UTF16String(ptr, attributeFileName.NameOffset_struct_getCurrOffset, attributeFileName.NameLength & 0xFF);
@@ -294,8 +299,8 @@ public class NtfsReader {
 	        attribute_Length = 0;
 	        for(; AttributeOffset < BufLength; AttributeOffset += attribute_Length){
 	        	int offset = AttributeOffset+ptr_offset;
-	        	int attribute_AttributeType = read32(ptr, offset);
-	        	attribute_Length = read32(ptr, offset+4);
+	        	int attribute_AttributeType = ByteArrayUtils.read32(ptr, offset);
+	        	attribute_Length = ByteArrayUtils.read32(ptr, offset+4);
 
 	        	if(AttributeOffset + attribute_Length >= BufLength) break;
 	            // exit the loop if end-marker.
@@ -433,9 +438,9 @@ public class NtfsReader {
 	            
 	            //attribute = new AttributeList(ptr, AttributeOffset+ptr_offset);//(AttributeList*)&ptr[AttributeOffset];
 	        	int offset = AttributeOffset+ptr_offset;
-	        	int attribute_AttributeType = read32(ptr, offset);
-	        	attribute_Length = read16(ptr, offset+4) & 0xFFFF;
-	        	long RefInode = read48(ptr, offset+16);
+	        	int attribute_AttributeType = ByteArrayUtils.read32(ptr, offset);
+	        	attribute_Length = ByteArrayUtils.read16(ptr, offset+4) & 0xFFFF;
+	        	long RefInode = ByteArrayUtils.read48(ptr, offset+16);
 	            /* Exit if no more attributes. AttributeLists are usually not closed by the
 	               0xFFFFFFFF endmarker. Reaching the end of the buffer is therefore normal and
 	               not an error. */
@@ -470,9 +475,9 @@ public class NtfsReader {
 	            }
 	            byte[] buffer = rawNode.getData();
 				
-				int AttributeOffset2 = read16(buffer, 20);
+				int AttributeOffset2 = ByteArrayUtils.read16(buffer, 20);
 				
-	            long baseInode = read48(buffer, 32);
+	            long baseInode = ByteArrayUtils.read48(buffer, 32);
 	            
 	            if (node.NodeIndex != baseInode) continue;
 
@@ -510,25 +515,14 @@ public class NtfsReader {
 			return data;
 	    }
 		
-		
-		
-		
-		
-		
-		
-	
-	
-
-
-	
 
     public static class ResidentAttribute {
          public int ValueLength;
          public short ValueOffset;
          
          public ResidentAttribute(byte[] buffer, int offset){
-        	 ValueLength = read32(buffer, offset);
-        	 ValueOffset = (short)read16(buffer, offset + 4);
+        	 ValueLength = ByteArrayUtils.read32(buffer, offset);
+        	 ValueOffset = (short)ByteArrayUtils.read16(buffer, offset + 4);
          }
     }
     public static class NonResidentAttribute{
@@ -541,12 +535,12 @@ public class NtfsReader {
         public long CompressedSize;    // Only when compressed
         
         public NonResidentAttribute(byte[] buffer, int offset){
-        	StartingVcn = read64(buffer, offset);
-        	RunArrayOffset = (short)read16(buffer, offset + 16);
-        	AllocatedSize = read64(buffer, offset + 24);
-        	DataSize = read64(buffer, offset + 32);
-        	InitializedSize = read64(buffer, offset + 40);
-        	CompressedSize = read64(buffer, offset + 48);
+        	StartingVcn = ByteArrayUtils.read64(buffer, offset);
+        	RunArrayOffset = (short)ByteArrayUtils.read16(buffer, offset + 16);
+        	AllocatedSize = ByteArrayUtils.read64(buffer, offset + 24);
+        	DataSize = ByteArrayUtils.read64(buffer, offset + 32);
+        	InitializedSize = ByteArrayUtils.read64(buffer, offset + 40);
+        	CompressedSize = ByteArrayUtils.read64(buffer, offset + 48);
         }
     }
     public static class AttributeFileName extends ParsableStructure {
@@ -609,15 +603,6 @@ public class NtfsReader {
 		}
 	}
     
-    
-    
-    
-
-    
-    
-    
-    
-    
     public static byte[] readFile(NtfsStream stream, NtfsConfig config, ReadableSource source) throws IOException {
 		long[] out = stream.getFragments();
 		byte[] data = new byte[(int)stream.Size];
@@ -639,15 +624,11 @@ public class NtfsReader {
     
     
     public static byte[] readAt(long byteOffset, long byteLen, ReadableSource source) throws IOException {
-    	int sectorCount = (int)clampExp(byteLen, 512);
+    	int sectorCount = (int)MathUtils.clampExp(byteLen, 512);
     	byte[] buffer = new byte[sectorCount];
     	source.readSectors(byteOffset / 512, sectorCount / 512, buffer, 0);
     	return buffer;
     }
-    
-    
-    
-    
     
     
     //---------- Utility Methods: ----------
@@ -676,29 +657,5 @@ public class NtfsReader {
 		}
 		System.err.println("getStreamTypeName():  unknown Type " + id + "(0x"+Integer.toHexString(id)+")");
 		return null;
-	}
-
-	private static long clampExp(long val, long step) {
-		long diff = val % step;
-		if (diff == 0) return val;
-		return val + step - diff;
-	}
-	
-	private static long read48(byte[] buffer, int offset) throws IOException {
-		long lower = read32(buffer, offset) & 0xFFFFFFFFL;
-		long upper = read16(buffer, offset + 4) & 0xFFFFL;
-		return (upper << 32) | lower;
-	}
-	
-	private static long read64(byte[] buffer, int offset) {
-		return ByteBuffer.wrap(buffer, offset, 8).order(ByteOrder.LITTLE_ENDIAN).asLongBuffer().get();
-	}
-	
-	private static int read32(byte[] buffer, int offset) {
-		return ByteBuffer.wrap(buffer, offset, 4).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().get();
-	}
-
-	private static int read16(byte[] buffer, int offset) {
-		return ByteBuffer.wrap(buffer, offset, 2).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get() & 0xFFFF;
 	}
 }

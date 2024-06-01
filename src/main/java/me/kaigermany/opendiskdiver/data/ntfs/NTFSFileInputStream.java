@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
+import me.kaigermany.opendiskdiver.utils.MathUtils;
 
 public class NTFSFileInputStream extends InputStream {
 	private ArrayList<long[]> runs;
@@ -78,15 +79,9 @@ public class NTFSFileInputStream extends InputStream {
 	}
 	
 	private static byte[] readAt(long byteOffset, long byteLen, ReadableSource source) throws IOException {
-    	int sectorCount = (int)clampExp(byteLen, 512);
+    	int sectorCount = (int)MathUtils.clampExp(byteLen, 512);
     	byte[] buffer = new byte[sectorCount];
     	source.readSectors(byteOffset / 512, sectorCount / 512, buffer, 0);
     	return buffer;
     }
-
-	private static long clampExp(long val, long step) {
-		long diff = val % step;
-		if (diff == 0) return val;
-		return val + step - diff;
-	}
 }

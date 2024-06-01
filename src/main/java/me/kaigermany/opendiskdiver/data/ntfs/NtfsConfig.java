@@ -1,10 +1,9 @@
 package me.kaigermany.opendiskdiver.data.ntfs;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
+import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 
 public class NtfsConfig {
 	public final int BytesPerSector;
@@ -20,44 +19,28 @@ public class NtfsConfig {
 		byte[] buffer = new byte[512];
 		source.readSector(0, buffer);
 		
-		long Signature = read64(buffer, 3);
+		long Signature = ByteArrayUtils.read64(buffer, 3);
 		if(Signature != 0x202020205346544EL) throw new IOException("No NTFS format detected!");
 		//System.out.println("Signature:" + Long.toString(Signature, 16));
-		BytesPerSector = read16(buffer, 11);
-		int sectorCount = read8(buffer, 13);
+		BytesPerSector = ByteArrayUtils.read16(buffer, 11);
+		int sectorCount = ByteArrayUtils.read8(buffer, 13);
 		clusterSize = BytesPerSector * sectorCount;
-		long TotalSectors = read64(buffer, 40);
+		long TotalSectors = ByteArrayUtils.read64(buffer, 40);
 		if(TotalSectors < 0) {		//math magic to prevent -a/b -effect.
 			TotalSectors >>>= 1;	//...but i am pretty sure it wont get used the next few decades xD
 			sectorCount >>>= 1;
 		}
 		TotalClustors = TotalSectors / sectorCount;
 		
-		MFT_Offset = read64(buffer, 48);
-		MFTMirror_Offset = read64(buffer, 56);
-		ClustersPerMftRecord = read32(buffer, 64);
-		ClustersPerIndexRecord = read32(buffer, 68);
+		MFT_Offset = ByteArrayUtils.read64(buffer, 48);
+		MFTMirror_Offset = ByteArrayUtils.read64(buffer, 56);
+		ClustersPerMftRecord = ByteArrayUtils.read32(buffer, 64);
+		ClustersPerIndexRecord = ByteArrayUtils.read32(buffer, 68);
 		
 		if (ClustersPerMftRecord >= 128){
 			BytesPerMftRecord = ((long)1 << (byte)(256 - ClustersPerMftRecord));
 		} else {
 			BytesPerMftRecord = ClustersPerMftRecord * clusterSize;
 		}
-	}
-	
-	private static long read64(byte[] buffer, int offset) {
-		return ByteBuffer.wrap(buffer, offset, 8).order(ByteOrder.LITTLE_ENDIAN).asLongBuffer().get();
-	}
-
-	private static int read32(byte[] buffer, int offset) {
-		return ByteBuffer.wrap(buffer, offset, 4).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().get();
-	}
-
-	private static int read16(byte[] buffer, int offset) {
-		return ByteBuffer.wrap(buffer, offset, 2).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get() & 0xFFFF;
-	}
-
-	private static int read8(byte[] buffer, int offset) {
-		return buffer[offset] & 0xFF;
 	}
 }

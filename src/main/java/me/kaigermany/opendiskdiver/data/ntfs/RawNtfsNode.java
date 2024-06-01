@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
+
 public class RawNtfsNode {
 	private byte[] data;
 	
@@ -13,23 +15,23 @@ public class RawNtfsNode {
 	}
 	
 	public boolean isActiveEntry() throws IOException {//is node in use?
-		int Flags = read16(data, 22);
+		int Flags = ByteArrayUtils.read16(data, 22);
 		return (Flags & 1) == 1;
 	}
 
 	public boolean isValid(int length) throws IOException {
 		if(!isActiveEntry()) return false;
-		int Type = read32(data, 0);
+		int Type = ByteArrayUtils.read32(data, 0);
 		if(Type != 0x454c4946) return false; //if not file signature -> return
 		//This is an inode extension used in an AttributeAttributeList of another inode, don't parse it
-		long baseInode = read48(data, 32);
+		long baseInode = ByteArrayUtils.read48(data, 32);
         if (baseInode != 0) return false;
         
-		int AttributeOffset = read16(data, 20);
+		int AttributeOffset = ByteArrayUtils.read16(data, 20);
 		if (AttributeOffset >= length){
 			throw new IOException("Error: attributes are outside the FILE record, the MFT may be corrupt.");
 		}
-		int BytesInUse = read32(data, 24);
+		int BytesInUse = ByteArrayUtils.read32(data, 24);
         if (BytesInUse > length){
         	throw new IOException("Error: the node record is bigger than the size of the buffer, the MFT may be corrupt.");
         }
@@ -63,19 +65,5 @@ public class RawNtfsNode {
         	mft[(Index << 1) + 1] = mft[UsaOffset + (i*2) + 1];
             Index = Index + increment;
         }
-	}
-	
-	private static long read48(byte[] buffer, int offset) throws IOException {
-		long lower = read32(buffer, offset) & 0xFFFFFFFFL;
-		long upper = read16(buffer, offset + 4) & 0xFFFFL;
-		return (upper << 32) | lower;
-	}
-	
-	private static int read32(byte[] buffer, int offset) {
-		return ByteBuffer.wrap(buffer, offset, 4).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().get();
-	}
-
-	private static int read16(byte[] buffer, int offset) {
-		return ByteBuffer.wrap(buffer, offset, 2).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get() & 0xFFFF;
 	}
 }
