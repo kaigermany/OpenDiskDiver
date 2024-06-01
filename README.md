@@ -3,17 +3,16 @@ Open toolbox for drive and file inspection and recovery
 
 # Status
 This project is currently in an early and unfinished state!
-Guessed progress: 5%
+Guessed progress: 10%
 
 # Supported Features:
-Currently supported: read MBR/GPT-Partition tables, ...
+Currently supported: MBR/GPT-Partition tables, NTFS (including compressed files)
 
 ## TODO list:
 - Module System
 - GUI/CLI
 - disk drive format parsers:
     - FAT
-    - NTFS
     - ext
 - other parsers planned:
     - VDI
