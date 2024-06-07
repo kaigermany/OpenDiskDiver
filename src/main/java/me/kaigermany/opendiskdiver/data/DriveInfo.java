@@ -17,7 +17,7 @@ public class DriveInfo {
 	}
 	
 	public ReadableSource openReader() throws FileNotFoundException {
-		return new DirectDiskReader(path);
+		return new DirectDiskReader(path, size);
 	}
 	
 	@Override

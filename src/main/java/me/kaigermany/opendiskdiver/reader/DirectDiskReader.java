@@ -7,9 +7,10 @@ import java.io.RandomAccessFile;
 
 public class DirectDiskReader implements ReadableSource, Closeable {
 	private RandomAccessFile raf;
-	
-	public DirectDiskReader(String path) throws FileNotFoundException {
+	private long numSectors;
+	public DirectDiskReader(String path, long numBytes) throws FileNotFoundException {
 		raf = new RandomAccessFile(path, "r");
+		numSectors = numBytes / 512;
 	}
 	
 	@Override
@@ -27,5 +28,10 @@ public class DirectDiskReader implements ReadableSource, Closeable {
 	@Override
 	protected void finalize() throws Throwable {
 		if(raf != null) raf.close();
+	}
+
+	@Override
+	public long numSectors() {
+		return numSectors;
 	}
 }

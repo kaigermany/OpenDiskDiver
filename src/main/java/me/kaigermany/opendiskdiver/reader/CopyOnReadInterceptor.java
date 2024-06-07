@@ -33,4 +33,9 @@ public class CopyOnReadInterceptor implements ReadableSource {
 		source.readSectors(sectorNumber, sectorCount, buffer, bufferOffset);
 		readAcceptor.onRead(sectorNumber, sectorCount, buffer, bufferOffset);
 	}
+
+	@Override
+	public long numSectors() {
+		return source.numSectors();
+	}
 }

@@ -41,6 +41,7 @@ public class Partition {
 	public static class LimitedReadableSource implements ReadableSource {
 		private ReadableSource source;
 		private long offset, len;
+		
 		public LimitedReadableSource(ReadableSource source, long offset, long len) {
 			this.source = source;
 			this.offset = offset;
@@ -52,6 +53,10 @@ public class Partition {
 			if((sectorNumber + offset) * 512 + (buffer.length - bufferOffset) > (offset + len) * 512) throw new IOException("Invalid read: outside of Partition!");
 			source.readSectors(sectorNumber + offset, sectorCount, buffer, bufferOffset);
 		}
-		
+
+		@Override
+		public long numSectors() {
+			return len;
+		}
 	}
 }

@@ -17,4 +17,6 @@ public interface ReadableSource {
 	
 	//highly recommended to implement this method, too.
 	void readSectors(long sectorNumber, int sectorCount, byte[] buffer, int bufferOffset) throws IOException;
+	
+	long numSectors();
 }
