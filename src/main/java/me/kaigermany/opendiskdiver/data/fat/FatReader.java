@@ -1,10 +1,13 @@
 package me.kaigermany.opendiskdiver.data.fat;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashMap;
+import java.util.HashSet;
 
 import me.kaigermany.opendiskdiver.data.Reader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
@@ -35,14 +38,16 @@ public class FatReader implements Reader {
 	}
 
 	public static enum FatType{
-		FAT12(0x0FFF),
-		FAT16(0xFFFF),
-		FAT32(0x0FFFFFFF);
+		FAT12(12, 0x0FFF),
+		FAT16(16, 0xFFFF),
+		FAT32(32, 0x0FFFFFFF);
 		
 		private int EOF_FLAG;
+		private int entrySize;
 		
-		FatType(int EOF_FLAG){
+		FatType(int entrySize, int EOF_FLAG){
 			this.EOF_FLAG = EOF_FLAG;
+			this.entrySize = entrySize;
 		}
 		
 		public int getEOF_FLAG(){
@@ -50,7 +55,7 @@ public class FatReader implements Reader {
 		}
 		
 		public int getEntrySize(){
-			return 0;//TODO
+			return entrySize;
 		}
 		
 		public static FatType getTypeByClusterCount(long clusterCount){
@@ -59,12 +64,17 @@ public class FatReader implements Reader {
 			else if(clusterCount > 4084L) return FAT16;
 			else return FAT12;
 			*/
-			
+			/*
 			//based on https://averstak.tripod.com/fatdox/bootsec.htm
 			if(clusterCount < 4087L) return FAT12;
 			if(clusterCount < 65527L) return FAT16;
 			if(clusterCount < 268435457L) return FAT32;
 			return null;
+			*/
+			//based on https://academy.cba.mit.edu/classes/networking_communications/SD/FAT.pdf
+			if(clusterCount < 4085L) return FAT12;
+			else if(clusterCount < 65525L) return FAT16;
+			else return FAT32;
 		}
 	}
 	
@@ -107,6 +117,8 @@ public class FatReader implements Reader {
 		public long clusterCount;
 		public FatType type;
 		public long FirstDataSector;
+		
+		int rootDirSectors;
 		
 		public FAT_BootSector(byte[] bootSector) throws IOException {
 			String oemName = new String(bootSector, 3, 8);
@@ -156,21 +168,39 @@ public class FatReader implements Reader {
 			long totalSectors = total16 == 0 ? total32 : total16;
 			fatSz = (sectors_per_FAT == 0 ? fatSz32 : sectors_per_FAT) & 0xFFFFFFFFL;
 			System.out.println("fatSz=" + fatSz);
-			int rootDirSectors = (root_dir_entries * 32 + (bytes_per_sector - 1)) / bytes_per_sector;
+			rootDirSectors = (root_dir_entries * 32 + (bytes_per_sector - 1)) / bytes_per_sector;
 			// if((root_dir_entries * 32 + (bytes_per_sector - 1)) > 0)
 			// rootDirSectors++;
 			System.out.println("rootDirSectors=" + rootDirSectors);
-			long dataSectors = totalSectors - (reserved_sectors + FAT_copys * fatSz + rootDirSectors);
-			FirstDataSector = reserved_sectors + (FAT_copys * fatSz) + rootDirSectors;
+			//FirstDataSector = reserved_sectors + (FAT_copys * fatSz) + rootDirSectors;
+			FirstDataSector = ((0-2) * sectors_per_clustor) + (reserved_sectors + (FAT_copys * fatSz) + rootDirSectors);
+			long dataSectors = totalSectors - FirstDataSector;
 			System.out.println("FirstDataSector=" + FirstDataSector);
 			clusterCount = dataSectors / sectors_per_clustor;
 			System.out.println("clusterCount: " + clusterCount);
 			
 			type = FatType.getTypeByClusterCount(clusterCount);
+			
+			if(type != FatType.FAT32){
+				//FirstRootDirSecNum = BPB_ResvdSecCnt + (BPB_NumFATs * BPB_FATSz16);
+				rootClustorNumber = reserved_sectors + (FAT_copys * sectors_per_FAT);
+				System.out.println("recalculated rootClustorNumber (because FS-Type != FAT32): " + rootClustorNumber);
+				//FirstDataSector = sectors_per_clustor * rootClustorNumber;//reserved_sectors + (FAT_copys * fatSz) + rootDirSectors;
+				//FirstDataSector = rootClustorNumber + rootDirSectors;//reserved_sectors + (FAT_copys * fatSz) + rootDirSectors;
+				//FirstDataSector = reserved_sectors + (FAT_copys * fatSz);
+				//FirstDataSector = ((0-2) * sectors_per_clustor) + (reserved_sectors + (FAT_copys * fatSz) + rootDirSectors);
+				
+				System.out.println("recalculated FirstDataSector=" + FirstDataSector);
+
+				//int bytesPerClustor = bytes_per_sector * sectors_per_clustor;
+				//final long offsetFix = (FirstDataSector * bytes_per_sector) - (bytesPerClustor * rootClustorNumber);
+			}
 		}
 	}
 	
-
+	public ArrayList<FileEntry> files = new ArrayList<FileEntry>();
+	public FatType type;
+	public int[][] fats;
 	
 	public FatReader() {}
 
@@ -187,6 +217,7 @@ public class FatReader implements Reader {
 		System.out.println("isExFat: " + isExFat);
 		
 		FAT_BootSector bootSectorContainer = new FAT_BootSector(bootSector);
+		this.type = bootSectorContainer.type;
 		
 		//boolean isFAT32 = clusterCount > 65524L;
 		//boolean isFAT16 = clusterCount > 4084L & !isFAT32;
@@ -198,18 +229,46 @@ public class FatReader implements Reader {
 
 		int bytesPerClustor = bootSectorContainer.bytes_per_sector * bootSectorContainer.sectors_per_clustor;
 
-		int[][] fats = new int[bootSectorContainer.FAT_copys][];
-		int getEntrySize = bootSectorContainer.type == FatType.FAT32 ? 32 : (bootSectorContainer.type == FatType.FAT16 ? 16 : 12);
+		fats = new int[bootSectorContainer.FAT_copys][];
+		int getEntrySize = bootSectorContainer.type.getEntrySize(); 
+				//bootSectorContainer.type == FatType.FAT32 ? 32 : (bootSectorContainer.type == FatType.FAT16 ? 16 : 12);
 		for (int i = 0; i < bootSectorContainer.FAT_copys; i++) {
 			long offset = (bootSectorContainer.reserved_sectors * bootSectorContainer.bytes_per_sector) + (i * (bootSectorContainer.fatSz * bootSectorContainer.bytes_per_sector));
 			fats[i] = readFAT(bootSectorContainer.clusterCount, source, getEntrySize, offset, bootSectorContainer.fatSz * bootSectorContainer.bytes_per_sector);
 		}
 		int[] rootClustors = readClusters(fats[0], bootSectorContainer.rootClustorNumber, bootSectorContainer.type);
 		System.out.println(Arrays.toString(rootClustors));
-		long offsetFix = (bootSectorContainer.FirstDataSector * bootSectorContainer.bytes_per_sector) - (bytesPerClustor * bootSectorContainer.rootClustorNumber);
+		long offsetFix = (bootSectorContainer.FirstDataSector * bootSectorContainer.bytes_per_sector);// - (bytesPerClustor * bootSectorContainer.rootClustorNumber);
 		Dir dir = new Dir("/");
-		ArrayList<FileEntry> files = new ArrayList<FileEntry>();
-		readDir(source, rootClustors, bytesPerClustor, offsetFix, dir, files, fats[0], bootSectorContainer.type, true);
+		
+		if(bootSectorContainer.type == FatType.FAT32){
+			
+			try{
+				System.out.println("offsetFix -> " + offsetFix);
+				HashSet<Long> doneDirEntries = new HashSet<Long>(1024);
+				readDir(source, rootClustors, bytesPerClustor, offsetFix, dir, files, fats[0], bootSectorContainer.type, false, doneDirEntries);
+				
+			}catch(Throwable e){
+				e.printStackTrace();
+			}
+			
+		} else {
+			//offsetFix = (bootSectorContainer.FirstDataSector * bootSectorContainer.bytes_per_sector);
+			try{
+				System.out.println("offsetFix -> " + offsetFix);
+				HashSet<Long> doneDirEntries = new HashSet<Long>(1024);
+				int rootDirSectorOffset = bootSectorContainer.rootClustorNumber;
+				int rootDirSectorSize = bootSectorContainer.rootDirSectors;
+				byte[] directData = new byte[rootDirSectorSize * 512];
+				source.readSectors(rootDirSectorOffset, rootDirSectorSize, directData, 0);
+				readDirDirect(source, rootClustors, bytesPerClustor, offsetFix, dir, files, fats[0], bootSectorContainer.type, false, doneDirEntries, directData);
+			}catch(Throwable e){
+				e.printStackTrace();
+			}
+			
+			
+		}
+		
 		
 		/*
 		FileOutputStream fos = new FileOutputStream(new File("H:/rawDump.txt"));
@@ -218,17 +277,57 @@ public class FatReader implements Reader {
 		*/
 
 		System.out.println(files.toString().replace("}, {", "},\n{"));
-
-		/*
-		 * { int[] clustors = readClusters(fats[0], 3628, isFAT32, isFAT16);
-		 * byte[] container = new byte[clustors.length * bytesPerClustor];
-		 * for(int i=0; i<clustors.length; i++) { raf.seek(clustors[i] *
-		 * bytesPerClustor + offsetFix); raf.read(container, i *
-		 * bytesPerClustor, bytesPerClustor); } //System.out.println(new
-		 * String(container)); _saveBytes("recovered_track.mp3", container); }
-		 */
+		int sectorOffsetOfFATonDrive = 245;//13191
+		int[] clustors = readClusters(fats[0], 2919, bootSectorContainer.type);
+		int[] runLenClusters = asRunLengthList(clustors);
+		System.out.println("BEGIN direct file location (in sectors):");
+		for(int i=0; i<runLenClusters.length; i+=2){
+			long plainDataOffset = (runLenClusters[i] * bytesPerClustor) / 512 + bootSectorContainer.FirstDataSector + sectorOffsetOfFATonDrive;
+			long plainLen = runLenClusters[i + 1] * bytesPerClustor / 512;
+			System.out.println(plainDataOffset + " +" + plainLen);
+		}
+		System.out.println("END direct file location");
+		
+		{
+			//System.out.println(Arrays.toString(clustors));
+			System.out.println(Arrays.toString(asRunLengthList(clustors)));
+			byte[] container = new byte[clustors.length * bytesPerClustor];
+			for (int i = 0; i < clustors.length; i++) {
+				source.readSectors((clustors[i] * bytesPerClustor) / 512 + bootSectorContainer.FirstDataSector, bytesPerClustor / 512, container, i * bytesPerClustor);
+			}
+			FileOutputStream fos = new FileOutputStream(new File("H:/dump.mp4"));
+			fos.write(container);
+			fos.close();
+			
+		}
+		
 		runClusterPointerMapAnalysis(fats[1], bootSectorContainer.type);
 
+	}
+	
+	private static int[] asRunLengthList(int[] serialList){
+		ArrayList<Integer> temp = new ArrayList<Integer>(16);
+		int start = serialList[0];
+		int len = 1;
+		for(int i=1; i<serialList.length; i++){
+			int pos = serialList[i];
+			if(pos == start+len){
+				len++;
+			} else {
+				temp.add(start);
+				temp.add(len);
+				start = pos;
+				len = 1;
+			}
+		}
+		temp.add(start);
+		temp.add(len);
+		int[] out = new int[temp.size()];
+		int wp=0;
+		for(int v : temp){
+			out[wp++] = v;
+		}
+		return out;
 	}
 	
 	private void runClusterPointerMapAnalysis(int[] clusterMap, FatType type) {
@@ -306,11 +405,17 @@ public class FatReader implements Reader {
 													 * 8) / getEntrySize)
 													 */];
 		System.out.println("entries: " + entries.length);
-		for (int i = 0; i < entries.length; i++) {
-			entries[i] = readVal(data, i, getEntrySize) & 0x0FFFFFFF;
-			// entries[i] += firstDataClustorOffset;//resSectBytes / 512;
-			// if(entries[i] != 0) System.out.println(entries[i]);
-		} /*
+		try{
+			for (int i = 0; i < entries.length; i++) {
+				entries[i] = readVal(data, i, getEntrySize) & 0x0FFFFFFF;
+				// entries[i] += firstDataClustorOffset;//resSectBytes / 512;
+				// if(entries[i] != 0) System.out.println(entries[i]);
+			}
+		}catch(Exception e){
+			e.printStackTrace();
+			System.err.println("WARNING: incomplete FAT linked list! maybe not every file can be read!");
+		}
+		/*
 			 * { int[] tmp = new int[256]; System.arraycopy(entries, 0, tmp,
 			 * 0, tmp.length); System.out.println(Arrays.toString(tmp)); }
 			 */
@@ -331,7 +436,7 @@ public class FatReader implements Reader {
 		}
 	}
 
-	private static int[] readClusters(int[] clustorMap, int clustor, FatType type) {
+	public static int[] readClusters(int[] clustorMap, int clustor, FatType type) {
 		int EOF_FLAG = type.getEOF_FLAG() - 7;
 		ArrayList<Integer> list = new ArrayList<Integer>();
 		int next = clustor;
@@ -361,14 +466,18 @@ public class FatReader implements Reader {
 			out[i++] = a;
 		return out;
 	}
-	
-	
 	private static void readDir(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
-			ArrayList<FileEntry> files, int[] clustorMap, FatType type, boolean readDetetedEntrys) throws IOException {
+			ArrayList<FileEntry> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries) throws IOException {
 		byte[] container = new byte[clustors.length * bytesPerClustor];
 		for (int i = 0; i < clustors.length; i++) {
 			source.readSectors((clustors[i] * bytesPerClustor + offsetFix) / 512, bytesPerClustor / 512, container, i * bytesPerClustor);
 		}
+		readDirDirect(source, clustors, bytesPerClustor, offsetFix, dir, files, clustorMap, type, readDetetedEntrys, doneDirEntries, container);
+	}
+	
+	private static void readDirDirect(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
+			ArrayList<FileEntry> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries, byte[] container) throws IOException {
+		
 		// System.out.println(Arrays.toString(container));
 		int entrySize = 32;
 		int entryCount = clustors.length * bytesPerClustor / entrySize;
@@ -379,10 +488,12 @@ public class FatReader implements Reader {
 		 */
 		for (int i = 0; i < entryCount; i++) {
 			int p = i * entrySize;
-			if (container[p] == (byte) 0xE5 && !readDetetedEntrys)
+			if (container[p] == (byte) 0xE5 && !readDetetedEntrys){
 				continue;// free entry
-			if (container[p] == 0x00)
+			}
+			if (container[p] == 0x00){
 				break;// free entry, including every following index!
+			}
 			// System.out.println("container[p]: " + container[p] + " | " +
 			// Integer.toHexString(container[p]));
 			int flags = container[p + 11] & 0xFF;
@@ -394,8 +505,9 @@ public class FatReader implements Reader {
 			boolean ATTR_DIRECTORY = (flags & 16) != 0;
 			boolean ATTR_ARCHIVE = (flags & 32) != 0;
 			boolean isLongName = flags == 0x0F;
-			if (isLongName)
+			if (isLongName){
 				continue;
+			}
 			int fileSize = (int) readLittleEndian(container, p + 28, 4);
 			int fileIndex = (int) (readLittleEndian(container, p + 26, 2)
 					| (readLittleEndian(container, p + 20, 2) << 16));
@@ -493,15 +605,32 @@ public class FatReader implements Reader {
 				}
 				if (name.equals(".") || name.equals(".."))
 					continue;
+				
+				if(doneDirEntries.contains((long)fileIndex)){
+					return;
+				} else {
+					doneDirEntries.add((long)fileIndex);
+				}
 				int[] objCoustors = readClusters(clustorMap, fileIndex, type);
+				
 				if (ATTR_DIRECTORY) {
 					System.out.println("ATTR_DIRECTORY");
-					try {
-						readDir(source, objCoustors, bytesPerClustor, offsetFix, new Dir(dir.path + name + "/"), files,
-								clustorMap, type, readDetetedEntrys);
-					} catch (Exception e) {
-						e.printStackTrace();
+					/*
+					if(Arrays.equals(objCoustors, clustors)){
+						//System.out.println("INFO/WARN: unexpected recursion in current dir's cluster-list found! entry will be skiped.");
+						System.err.println("ERROR: unexpected recursion in current dir's cluster-list found!");
+						return;
 					}
+					*/
+					try {
+						System.out.println("objCoustors: " + Arrays.toString(objCoustors));
+						readDir(source, objCoustors, bytesPerClustor, offsetFix, new Dir(dir.path + name + "/"), files,
+								clustorMap, type, readDetetedEntrys, doneDirEntries);
+					} catch (Exception e) {
+						//e.printStackTrace();
+						System.err.println(e);
+					}
+					
 					System.out.println(Arrays.toString(objCoustors));
 				} else {
 					files.add(new FileEntry(dir, name, time, objCoustors, fileSize));
@@ -529,7 +658,7 @@ public class FatReader implements Reader {
 
 	}
 
-	public static class FileEntry {//TODO create an univeral File interface to make shared props like name, size etc. accessible
+	public static class FileEntry {//TODO create an universal File interface to make shared props like name, size etc. accessible
 		public String name;
 		public long age;
 		public int[] clustors;
