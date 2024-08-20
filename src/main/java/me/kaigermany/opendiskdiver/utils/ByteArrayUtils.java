@@ -21,7 +21,7 @@ public class ByteArrayUtils {
 		return buffer[offset] & 0xFF;
 	}
 	
-	public static long read48(byte[] buffer, int offset) throws IOException {
+	public static long read48(byte[] buffer, int offset) {
 		long lower = read32(buffer, offset) & 0xFFFFFFFFL;
 		long upper = read16(buffer, offset + 4) & 0xFFFFL;
 		return (upper << 32) | lower;

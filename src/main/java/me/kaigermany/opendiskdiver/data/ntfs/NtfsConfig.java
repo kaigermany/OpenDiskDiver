@@ -18,7 +18,6 @@ public class NtfsConfig {
 	public NtfsConfig(ReadableSource source) throws IOException {
 		byte[] buffer = new byte[512];
 		source.readSector(0, buffer);
-		
 		long Signature = ByteArrayUtils.read64(buffer, 3);
 		if(Signature != 0x202020205346544EL) throw new IOException("No NTFS format detected!");
 		//System.out.println("Signature:" + Long.toString(Signature, 16));
