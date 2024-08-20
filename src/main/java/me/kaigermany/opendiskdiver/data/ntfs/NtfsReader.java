@@ -5,12 +5,16 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 
 import me.kaigermany.opendiskdiver.data.Reader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 import me.kaigermany.opendiskdiver.utils.MathUtils;
+
+// https://flatcap.github.io/linux-ntfs/ntfs/concepts/file_record.html
 
 public class NtfsReader implements Reader {
 	public static final int AttributeType_AttributeData = 0x80;
@@ -83,6 +87,7 @@ public class NtfsReader implements Reader {
 	
 	public NtfsNode[] readMFT(ReadableSource source) throws IOException {
 		NtfsStream mftStream = null;
+		NtfsNode MFTnode = null;
 		{//step 1: read MFT entry
 			
 			byte[] mftEntryBytes = new byte[ (int)MathUtils.clampExp(config.BytesPerMftRecord, 512) ]; //align towards 512
@@ -90,11 +95,14 @@ public class NtfsReader implements Reader {
 			
 			RawNtfsNode temp = new RawNtfsNode(mftEntryBytes, config);
 			NtfsNode node = new NtfsNode(0, config, source);
-			if(!ProcessMftRecordSpecial(node, temp.getData(), (int)config.BytesPerMftRecord, null, config, source, 0, null)){
+			if(!ProcessMftRecordOfMFT(node, temp.getData(), (int)config.BytesPerMftRecord, null, config, source, 0, null)){
 				mftStream = node.SearchStream(AttributeType_AttributeData);
-				node = ProcessMftRecord(temp.getData(), (int)config.BytesPerMftRecord, mftStream, config, source, 0, null);
+				node = ProcessMftRecord(temp.getData(), (int)config.BytesPerMftRecord, mftStream, config, source, 0, null, node);
 			}
 			mftStream = node.SearchStream(AttributeType_AttributeData);
+			System.out.println(node.streams);
+			System.out.println("mftStream: " + mftStream);
+			MFTnode = node;
 		}
 		
 		//step 2: walk through all entries and load them into memory as long as they are marked as valid.
@@ -124,7 +132,7 @@ public class NtfsReader implements Reader {
 			if(rawNode != null && rawNode.isValid(bytesPerMftRecord)){
 				rawNodes[nodeIndex] = null;
 		        
-		        NtfsNode node = nodes[nodeIndex] = ProcessMftRecord(rawNode.getData(), bytesPerMftRecord, mftStream, config, source, nodeIndex, rawNodes);
+		        NtfsNode node = nodes[nodeIndex] = ProcessMftRecord(rawNode.getData(), bytesPerMftRecord, mftStream, config, source, nodeIndex, rawNodes, MFTnode);
 		        
 		        if(node != null){
 		        	node.isSystemFile = node.Name != null && node.Name.startsWith("$") && node.ParentNodeIndex == 5 && !node.Name.equals("$RECYCLE.BIN");
@@ -136,49 +144,258 @@ public class NtfsReader implements Reader {
 	
 		
 
-		public NtfsNode ProcessMftRecord(byte[] data, int length, NtfsStream MftStream, NtfsConfig config, ReadableSource source, long nodeIndex, RawNtfsNode[] rawNodes) throws IOException {
-			int AttributeOffset = ByteArrayUtils.read16(data, 20);
-			int Flags = ByteArrayUtils.read16(data, 22);
-			
-	        NtfsNode node = new NtfsNode(nodeIndex, config, source);
-	        
-	        if ((Flags & 2) == 2) {
-	        	node.Attributes |= Attributes_Directory;
-	        	node.isDir = true;
-	        }
-	        
-	        ProcessAttributes(node, data, AttributeOffset, length - AttributeOffset, false, 0, MftStream, config, source, rawNodes);
-	        
-	        for(NtfsStream s : node.streams) s.applyFragments();
-	        
-	        return node;
-		}
+	public NtfsNode ProcessMftRecord(byte[] data, int length, NtfsStream MftStream, NtfsConfig config, ReadableSource source, long nodeIndex, RawNtfsNode[] rawNodes, NtfsNode MFTnode) throws IOException {
+		int AttributeOffset = ByteArrayUtils.read16(data, 20);
+		int Flags = ByteArrayUtils.read16(data, 22);
 		
+		// https://flatcap.github.io/linux-ntfs/ntfs/concepts/file_record.html
+		int storedIndex = ByteArrayUtils.read32(data, 0x2C);//if we don't know its index (where we read), we can use the value stored in the entry :)
+		if(nodeIndex == -1) nodeIndex = storedIndex & 0xFFFFFFFFL;//this only may get a problem if we have more then ((1 << 32) - 1) entries.
 		
-		public boolean ProcessMftRecordSpecial(NtfsNode node, byte[] data, int length, NtfsStream MftStream, NtfsConfig config, ReadableSource source, long nodeIndex, RawNtfsNode[] rawNodes) throws IOException {
-			int AttributeOffset = ByteArrayUtils.read16(data, 20);
-			int Flags = ByteArrayUtils.read16(data, 22);
-			
-	        
-	        
-	        if ((Flags & 2) == 2) {
-	        	node.Attributes |= Attributes_Directory;
-	        	node.isDir = true;
-	        }
-	        boolean success = true;
-	        try{
-	        	ProcessAttributes(node, data, AttributeOffset, length - AttributeOffset, false, 0, MftStream, config, source, rawNodes);
-	        }catch(Exception e){
-	        	success = false;
-	        }
-	        
-	        for(NtfsStream s : node.streams) s.applyFragments();
-	        
-	        return success;
-		}
+        NtfsNode node = new NtfsNode(nodeIndex, config, source);
+        
+        if ((Flags & 2) == 2) {
+        	node.isDir = true;
+        }
+/*
+        ArrayList<byte[]> attributes = readAttributes(data, AttributeOffset, length, false);
+        {
+        	int attribute_Flags = ByteArrayUtils.read16(attributes.get(0), 12);//0x0001 = Compressed, 0x4000 = Encrypted, 0x8000 = Sparse
+        	//int attribute_AttributeNumber = read16(ptr, offset+14);
+        	node.isCompressed = (attribute_Flags & 0x0001) != 0;
+        	node.isEncrypted = (attribute_Flags & 0x4000) != 0;
+        	node.isSparse = (attribute_Flags & 0x8000) != 0;
+        }
+    	for(byte[] a : attributes) parseAttribute(node, a, MFTnode, rawNodes);
+  */      
+        ProcessAttributes(node, data, AttributeOffset, length - AttributeOffset, false, 0, MftStream, config, source, rawNodes);
+        
+        for(NtfsStream s : node.streams) s.applyFragments();
+        
+        return node;
+	}
+	
+	
+	public boolean ProcessMftRecordOfMFT(NtfsNode node, byte[] data, int length, NtfsStream MftStream, NtfsConfig config, ReadableSource source, long nodeIndex, RawNtfsNode[] rawNodes) throws IOException {
+		int AttributeOffset = ByteArrayUtils.read16(data, 20);
+		int Flags = ByteArrayUtils.read16(data, 22);
+		
+        
+        
+        if ((Flags & 2) == 2) {
+        	node.isDir = true;
+        }
+        boolean success = true;
+        try{
+        	//ArrayList<byte[]> attributes = readAttributes(data, AttributeOffset, length, false);
+        	//for(byte[] a : attributes) parseAttribute(node, a, node, rawNodes);
+        	ProcessAttributes(node, data, AttributeOffset, length - AttributeOffset, false, 0, MftStream, config, source, rawNodes);
+        }catch(Exception e){
+        	success = false;
+        }
+        
+        for(NtfsStream s : node.streams) s.applyFragments();
+        
+        return success;
+	}
 
-		
-		
+	private ArrayList<byte[]> readAttributes(byte[] data, int offset, int maxLen, boolean isSubAttribute) {
+		// predict list size: min attr-size=24, len=maxLen-offset
+		ArrayList<byte[]> out = new ArrayList<byte[]>(24 / (maxLen - offset));
+		while (offset < maxLen) {
+			int attributeType = ByteArrayUtils.read32(data, offset);
+			if (attributeType == -1 || attributeType == 0)
+				break;
+			int attributeLength = isSubAttribute ? ByteArrayUtils.read16(data, offset + 4) : ByteArrayUtils.read32(data, offset + 4);
+			if (offset + attributeLength >= maxLen)
+				break;
+			out.add(cutOutBytes(data, offset, attributeLength));
+			offset += attributeLength;
+		}
+		return out;
+	}
+
+	private static byte[] cutOutBytes(byte[] arr, int off, int len) {
+		byte[] out = new byte[len];
+		System.arraycopy(arr, off, out, 0, len);
+		return out;
+	}
+
+	private void parseAttribute(NtfsNode outputNode, byte[] data, NtfsNode MFTnode, RawNtfsNode[] rawNodes) {
+		final int AttributeFileName = 0x30;
+		final int AttributeData = 0x80;
+
+		int attributeType = ByteArrayUtils.read32(data, 0);
+
+		boolean isExternalAttibute = data[8] != 0;// attribute_Nonresident
+		String name = null;
+		{
+			byte nameLength = data[9];
+			if (nameLength > 0) {
+				int nameOffset = ByteArrayUtils.read16(data, 10);
+				name = UTF16String(data, nameOffset, nameLength);
+			}
+		}
+		if (!isExternalAttibute) {
+			int ValueLength = ByteArrayUtils.read32(data, 16);
+			int ValueOffset = ByteArrayUtils.read16(data, 16 + 4);
+			if (attributeType == AttributeFileName) {
+				AttributeFileName attributeFileName = new AttributeFileName(data, ValueOffset);
+
+				outputNode.lastEdited = attributeFileName.ChangeTime;
+				outputNode.ParentNodeIndex = ByteArrayUtils.read48(data, ValueOffset);
+
+				if (attributeFileName.NameType == 1 || outputNode.Name == null) {
+					outputNode.Name = UTF16String(data, attributeFileName.NameOffset_struct_getCurrOffset,
+							attributeFileName.NameLength & 0xFF);
+				}
+			} else if (attributeType == AttributeData) {
+				byte[] fileBytes = cutOutBytes(data, ValueOffset, ValueLength);
+				outputNode.fileBytes.put(name, fileBytes);
+				outputNode.Size = ValueLength;
+			} else if (attributeType == AttributeType_AttributeAttributeList) {
+				//TODO
+				/*
+				try {
+					ProcessAttributeList(outputNode, data, ValueOffset, ValueLength, 0, null, config, null, null);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+				*/
+				processAttributesList(data, ValueOffset, ValueLength, outputNode, MFTnode, rawNodes);
+			}
+		} else {// nonresident, aka somewhere else then this entry.
+			int offset = 16;
+
+			long StartingVcn = ByteArrayUtils.read64(data, offset);
+			int RunArrayOffset = ByteArrayUtils.read16(data, offset + 16);
+			long AllocatedSize = ByteArrayUtils.read64(data, offset + 24);
+			long DataSize = ByteArrayUtils.read64(data, offset + 32);
+			long InitializedSize = ByteArrayUtils.read64(data, offset + 40);
+			long CompressedSize = ByteArrayUtils.read64(data, offset + 48);
+			
+			if (attributeType == 0xA0) {//INDEX_ALLOCATION
+				
+				NtfsStream stream = new NtfsStream(name, attributeType, DataSize);
+				//TODO
+
+				outputNode.streams.add(stream);
+				
+				// we need the fragment of the MFTNode so retrieve them this
+				// time
+				// even if fragments aren't normally read
+
+				try {
+					ProcessFragments(stream, data, 0 + (RunArrayOffset & 0xFFFF) + 0, data.length, StartingVcn);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+
+			} else if (attributeType == 0x20) {//ATTRIBUTE_LIST
+				
+				if (DataSize >= Integer.MAX_VALUE) {
+					System.err.println("too many bytes to read: " + DataSize);
+					System.err.println("affected file: " + outputNode.Name);
+				} else {
+					//TODO
+					
+					try{
+						byte[] buffer = readNonResidentData(data, RunArrayOffset, data.length - RunArrayOffset, DataSize, config, MFTnode.getSource());
+						
+						System.out.println("buffer: " + buffer.length);
+						
+						processAttributesList(buffer, 0, (int)DataSize, outputNode, MFTnode, rawNodes);
+						
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+					
+				}
+				
+
+			}
+			
+			
+		}
+	}
+	
+	
+	private void processAttributesList(byte[] data, int ValueOffset, int ValueLength, NtfsNode outputNode, NtfsNode MFTnode, RawNtfsNode[] rawNodes){
+		final int AttributeData = 0x80;
+		System.out.println(Arrays.toString(data));
+		ArrayList<byte[]> list = readAttributes(data, ValueOffset, ValueLength, true);
+		System.out.println("list: " + list);
+		for(byte[] attrData : list) {
+			
+			
+			
+        	int attribute_AttributeType = ByteArrayUtils.read32(attrData, 0);
+        	System.out.println("processAttributesList()::attribute_AttributeType = " + (attribute_AttributeType >> 4));
+        	int attribute_Length = ByteArrayUtils.read16(attrData, 4) & 0xFFFF;
+        	long RefInode = ByteArrayUtils.read48(attrData, 16);
+        	//if (AttributeOffset + 3 > bufLength) break;
+            if (attribute_AttributeType == 0xFFFFFFFF) break;
+            if (attribute_Length < 3) break;
+            //if (AttributeOffset + attribute_Length > bufLength) break;
+            /* Extract the referenced Inode. If it's the same as the calling Inode then ignore
+               (if we don't ignore then the program will loop forever, because for some
+               reason the info in the calling Inode is duplicated here...). */
+            //long RefInode = (((long)attribute.InodeNumberHighPart & 0xFFFF) << 32) | (attribute.InodeNumberLowPart & 0xFFFFFFFF);
+            if (RefInode == outputNode.NodeIndex) continue;
+            /* Extract the streamname. I don't know why AttributeLists can have names, and
+               the name is not used further down. It is only extracted for debugging purposes.
+               */
+            
+            // Find the fragment in the MFT that contains the referenced Inode.
+            RawNtfsNode rawNode;
+            if(rawNodes == null){//in some rare cases, the MFT itself wants to read extended contents...
+            	try{
+            		@SuppressWarnings("resource")
+					NTFSFileInputStream nfis = new NTFSFileInputStream(MFTnode.SearchStream(AttributeData), config, MFTnode.getSource());
+	            	nfis.skip(RefInode * config.BytesPerMftRecord);
+	            	byte[] localEntry = new byte[(int)config.BytesPerMftRecord];
+	            	nfis.read(localEntry, 0, localEntry.length);
+	            	rawNode = new RawNtfsNode(localEntry, config);
+            	}catch(Exception e){
+            		e.printStackTrace();
+            		rawNode = null;
+            	}
+            } else {
+            	rawNode = rawNodes[(int)RefInode];
+            }
+            
+            byte[] buffer = rawNode.getData();
+			
+			int AttributeOffset2 = ByteArrayUtils.read16(buffer, 20);
+			
+            long baseInode = ByteArrayUtils.read48(buffer, 32);
+            
+            if (outputNode.NodeIndex != baseInode) continue;
+
+            // Process the list of attributes in the Inode, by recursively calling the ProcessAttributes() subroutine.
+            /*
+            ProcessAttributes(
+                node,
+                buffer, (AttributeOffset2 & 0xFFFF),
+                (int)config.BytesPerMftRecord - (AttributeOffset2 & 0xFFFF),
+                debug, depth + 1, MftStream, config, source, rawNodes
+            );
+			*/
+            ArrayList<byte[]> attributes = readAttributes(data, AttributeOffset2, (int)config.BytesPerMftRecord - AttributeOffset2, false);//TODO bool==false?
+            for(byte[] attr : attributes) parseAttribute(outputNode, attr, MFTnode, rawNodes);
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+		}
+	}
+
 		private void ProcessAttributes(NtfsNode node, byte[] ptr, int ptr_offset, int BufLength, boolean debug, int depth
 				, NtfsStream MftStream, NtfsConfig config, ReadableSource source, RawNtfsNode[] rawNodes) throws IOException {
 
@@ -231,13 +448,7 @@ public class NtfsReader implements Reader {
 	                    	AttributeFileName attributeFileName = new AttributeFileName(ptr, offset2);
 	                    	
 	                    	node.lastEdited = attributeFileName.ChangeTime;
-	                    	/*
-	                        if (attributeFileName.InodeNumberHighPart > 0){
-	                            throw new IOException("NotSupportedException: 48 bits inode are not supported to reduce memory footprint.");
-	                        }
-	                        */
-	                        //node.ParentNodeIndex = ((attributeFileName.InodeNumberHighPart & 0xFFFF) << 32) | (attributeFileName.InodeNumberLowPart & 0xFFFFFFFF);
-	                        node.ParentNodeIndex = ByteArrayUtils.read48(ptr, offset2);
+	                    	node.ParentNodeIndex = ByteArrayUtils.read48(ptr, offset2);
 	                        
 	                        if (attributeFileName.NameType == 1 || node.Name == null){
 	                        	node.Name = UTF16String(ptr, attributeFileName.NameOffset_struct_getCurrOffset, attributeFileName.NameLength & 0xFF);
@@ -245,19 +456,10 @@ public class NtfsReader implements Reader {
 	                        }
 	                        break;
 
-	                    case 0x10://AttributeType.AttributeStandardInformation:
-	                    	node.Attributes |= ByteBuffer.wrap(ptr, AttributeOffset + (residentAttribute.ValueOffset & 0xFFFF) + 64+ptr_offset, 4)
-	                    		.order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().get();
-
-	                        break;
-
 	                    case 0x80://AttributeType.AttributeData: //hier ist die rohe datei gespeichert, wenn tag verwendet wird :)
 	                        node.Size = residentAttribute.ValueLength;
 	                        if(debug) System.out.println("residentAttribute.ValueLength="+residentAttribute.ValueLength);
 	                        
-	                        break;
-	                    case 0x40://AttributeObjectId
-	                    	
 	                        break;
 	                }
 	            } else {
@@ -325,12 +527,11 @@ public class NtfsReader implements Reader {
 	            		NonResidentAttribute nonResidentAttribute = new NonResidentAttribute(ptr, AttributeOffset+ptr_offset+16);
 	            		long WantedLength = nonResidentAttribute.DataSize;
 	            		byte[] buffer = null;
-        				if (WantedLength >= /* UInt32.MaxValue */0x7FFFFFFFL) {
-        					// throw new IOException("too many bytes to read");
+        				if (WantedLength >= Integer.MAX_VALUE) {
         					System.err.println("too many bytes to read: " + WantedLength);
         					System.err.println("affected file: " + node.Name);
         				} else {
-							buffer = ProcessNonResidentData(ptr,
+							buffer = readNonResidentData(ptr,
 									AttributeOffset + ptr_offset + (nonResidentAttribute.RunArrayOffset & 0xFFFF),
 									attribute_Length - nonResidentAttribute.RunArrayOffset, WantedLength, config, source
 							);
@@ -494,7 +695,7 @@ public class NtfsReader implements Reader {
 	    }
 	    
 	    
-	    private byte[] ProcessNonResidentData(byte[] RunData, int RunData_offset, int RunDataLength,
+	    private byte[] readNonResidentData(byte[] RunData, int RunData_offset, int RunDataLength,
 				long WantedLength, NtfsConfig config, ReadableSource source) throws IOException {
 			
 			if (RunData == null || RunDataLength == 0){
