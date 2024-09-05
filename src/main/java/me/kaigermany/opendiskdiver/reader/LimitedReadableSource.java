@@ -14,7 +14,8 @@ public class LimitedReadableSource implements ReadableSource {
 
 	@Override
 	public void readSectors(long sectorNumber, int sectorCount, byte[] buffer, int bufferOffset) throws IOException {
-		if((sectorNumber + offset) * 512 + (buffer.length - bufferOffset) > (offset + len) * 512) throw new IOException("Invalid read: outside of Partition!");
+		//if((sectorNumber + offset) * 512 + (buffer.length - bufferOffset) > (offset + len) * 512) throw new IOException("Invalid read: outside of Partition!");
+		if(sectorNumber + sectorCount  > len) throw new IOException("Invalid read: outside of Partition!");
 		source.readSectors(sectorNumber + offset, sectorCount, buffer, bufferOffset);
 	}
 
