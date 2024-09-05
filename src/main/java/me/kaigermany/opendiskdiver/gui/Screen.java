@@ -76,7 +76,7 @@ public class Screen {
 	public void write(String text, int x, int y, String foregroundColor, String backgroundColor){
 		if(x >= 0 && y >= 0 && x < w & y < h) {
 			char[] arr = text.toCharArray();
-			int l = Math.min(arr.length, w - (x + arr.length));
+			int l = Math.min(arr.length, w - x);
 			for(int i=0; i<l; i++){
 				int pos = i + x + (y * w);
 				map[pos] = arr[i];
