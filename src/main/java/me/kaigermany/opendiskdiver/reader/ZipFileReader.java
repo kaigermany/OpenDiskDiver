@@ -56,7 +56,7 @@ public class ZipFileReader implements ReadableSource, Closeable {
 	private byte[] readBlock(int blockIndex) throws IOException {
 		ZipEntry e = blockTable[blockIndex];
 		if(e == null){
-			return new byte[(int)blockSizeInSectors];
+			return new byte[(int)(blockSizeInSectors * 512)];
 		}
 		return readFullEntry(e);
 	}

@@ -3,7 +3,6 @@ package me.kaigermany.opendiskdiver.writer;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -17,7 +16,7 @@ public class ZipFileWriter {
 		final long maxNumSectors = reader.numSectors();
 		final long numExpectedBlocks = maxNumSectors / blockSizeInSectors;
 		
-		//zos.setLevel(Deflater.BEST_COMPRESSION);
+		//zos.setLevel(java.util.zip.Deflater.BEST_COMPRESSION);
 		
 		zos.putNextEntry(new ZipEntry("info.txt"));
 		zos.write((
