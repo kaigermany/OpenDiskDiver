@@ -51,4 +51,32 @@ public class DumpUtils {
 				break;
 		}
 	}
+	
+
+	public static String binaryDumpToString(byte[] in) {
+		StringBuilder sb = new StringBuilder(in.length * 2);
+		int offset = 0;
+		while (true) {
+			sb.append(hexInt(offset) + " ");
+			for (int i = 0; i < 16; i++) {
+				int a = offset + i;
+				if (a < in.length)
+					sb.append(hexByte(in[a]) + " ");
+				else
+					sb.append("   ");
+			}
+			for (int i = 0; i < 16; i++) {
+				int a = offset + i;
+				if (a < in.length)
+					sb.append((char) in[a]);
+				else
+					sb.append(" ");
+			}
+			sb.append("\r\n");
+			offset += 16;
+			if (offset >= in.length)
+				break;
+		}
+		return sb.toString();
+	}
 }
