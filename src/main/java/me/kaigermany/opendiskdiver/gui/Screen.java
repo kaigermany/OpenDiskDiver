@@ -13,6 +13,8 @@ public class Screen {
 	public int h;
 	ConsoleInterface console;
 	
+	public String backgroundColor = BLACK;
+	
 	public Screen(int w, int h, ConsoleInterface console){
 		this.console = console;
 		resize(w, h);
@@ -63,13 +65,18 @@ public class Screen {
 			sb.append('\n');
 		}
 		console.write(sb.toString());
+		console.setColor(backgroundColor, true);
+	}
+	
+	public void setBackgroundColor(String color){
+		backgroundColor = color;
 	}
 	
 	public void clear(){
 		for(int i=0; i<w*h; i++) {
 			map[i] = ' ';
 			foregroundColorMap[i] = WHITE;
-			backgroundColorMap[i] = BLACK;
+			backgroundColorMap[i] = backgroundColor;
 		}
 	}
 	
