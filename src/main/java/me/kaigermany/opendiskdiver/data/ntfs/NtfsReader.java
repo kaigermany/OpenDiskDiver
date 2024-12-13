@@ -29,14 +29,20 @@ public class NtfsReader implements Reader {
 	
 	public void read(ReadableSource source) throws IOException {
 		config = new NtfsConfig(source);
+		System.out.println(config);
 		NtfsNode[] nodes = readMFT(source);
 		fileMap = convertNodesToFiles(nodes);
+		
+		for(String f : fileMap.keySet()){
+			System.out.println(f);
+		}
+		
 	}
 	
 	private HashMap<String, NtfsNode> convertNodesToFiles(NtfsNode[] nodes){
 		HashMap<String, NtfsNode> fileMap = new HashMap<String, NtfsNode>(nodes.length * 2);
 		for(NtfsNode n : nodes) {
-			if(n == null || /*n.isDir ||*/ n.streams.size() == 0) continue;
+			if(n == null || /*n.isDir ||*/ n.streams.size() == 0 || n.NodeIndex == 5) continue;
 			//System.out.println(n.Name);
 			try{
 				String name = solveFilePath(nodes, n.NodeIndex);
@@ -114,15 +120,17 @@ public class NtfsReader implements Reader {
 		System.out.println("nodeCount="+nodeCount);
 		RawNtfsNode[] rawNodes = new RawNtfsNode[nodeCount];
 		int bytesPerMftRecord = (int)config.BytesPerMftRecord;
-		for(int nodeIndex=0; nodeIndex<nodeCount; nodeIndex++){
-			byte[] buffer2 = new byte[bytesPerMftRecord];
-	        int l = bis.read(buffer2, 0, bytesPerMftRecord);
-	        if(l != (int)config.BytesPerMftRecord) throw new IOException("Missing data in MFT-Stream: readed only " + l + " bytes, expected " + config.BytesPerMftRecord + " bytes.");
-	        RawNtfsNode node = new RawNtfsNode(buffer2, config);
-	        if(node.isActiveEntry()){
-	        	rawNodes[nodeIndex] = node;
-	        }
-		}
+		try{
+			for(int nodeIndex=0; nodeIndex<nodeCount; nodeIndex++){
+				byte[] buffer2 = new byte[bytesPerMftRecord];
+		        int l = bis.read(buffer2, 0, bytesPerMftRecord);
+		        if(l != (int)config.BytesPerMftRecord) throw new IOException("Missing data in MFT-Stream: readed only " + l + " bytes, expected " + config.BytesPerMftRecord + " bytes.");
+		        RawNtfsNode node = new RawNtfsNode(buffer2, config);
+		        if(node.isActiveEntry()){
+		        	rawNodes[nodeIndex] = node;
+		        }
+			}
+		}catch(Exception e){e.printStackTrace();}
 		bis = null;
 		nfis = null;
 		//step 3: if a node is a FILE node then parse it fully.
