@@ -29,7 +29,7 @@ public class SelectDriveGui {
 		this.console = console;
 		this.drives = WindowsDrives.listDrives();
 		System.out.println(drives.toString().replace("}, {", "},\n{"));
-		numSlots = drives.size() + 2;
+		numSlots = drives.size() + pseudoSources.length;
 		int maxWidth = 0;
 		for(DriveInfo di : drives) maxWidth = Math.max(maxWidth, di.name.length());
 		for(String s : pseudoSources) maxWidth = Math.max(maxWidth, s.length());
