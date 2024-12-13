@@ -42,4 +42,19 @@ public class NtfsConfig {
 			BytesPerMftRecord = ClustersPerMftRecord * clusterSize;
 		}
 	}
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder(1024);
+		sb.append("---------- NTFS Boot Sector Essentials Dump: ----------\r\n");
+		sb.append("BytesPerSector: \t" + BytesPerSector + "\r\n");
+		sb.append("clusterSize: \t" + clusterSize + "\r\n");
+		sb.append("TotalClustors: \t" + TotalClustors + "\r\n");
+		sb.append("MFT_Offset: \t" + MFT_Offset + "\r\n");
+		sb.append("MFTMirror_Offset: \t" + MFTMirror_Offset + "\r\n");
+		sb.append("ClustersPerMftRecord: \t" + ClustersPerMftRecord + "\r\n");
+		sb.append("ClustersPerIndexRecord: \t" + ClustersPerIndexRecord + "\r\n");
+		sb.append("BytesPerMftRecord: \t" + BytesPerMftRecord + "\r\n");
+		sb.append("-------------------- End Dump --------------------");
+		return sb.toString();
+	}
 }
