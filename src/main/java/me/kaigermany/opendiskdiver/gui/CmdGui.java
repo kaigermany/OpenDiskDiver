@@ -14,9 +14,9 @@ public class CmdGui {
 		while(true){
 			try{
 				String text = readLine().trim();
-				int n = Integer.parseInt(text);
+				int n = Integer.parseInt(text) - 1;
 				if(n < 0 || n >= entries.length) throw new Exception();
-				return n - 1;
+				return n;
 			}catch(Exception ignored){
 				//ignored.printStackTrace();
 			}
@@ -34,7 +34,7 @@ public class CmdGui {
 		}
 	}
 	
-	private static String readLine() throws IOException {
+	public static String readLine() throws IOException {
 		ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
 		int chr;
 		while(true){
