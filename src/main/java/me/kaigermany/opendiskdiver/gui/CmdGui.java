@@ -8,13 +8,15 @@ import java.nio.charset.StandardCharsets;
 public class CmdGui {
 	public static int listSelectBlocking(String[] entries){
 		System.out.println("Please select one option by enter its number(1 - "+entries.length+"):");
-		for(String row : entries){
-			System.out.println(row);
+		for(int i=0; i<entries.length; i++){
+			System.out.println(String.valueOf(i + 1) + " \t" + entries[i]);
 		}
 		while(true){
 			try{
 				String text = readLine().trim();
-				return Integer.parseInt(text);
+				int n = Integer.parseInt(text);
+				if(n < 0 || n >= entries.length) throw new Exception();
+				return n - 1;
 			}catch(Exception ignored){
 				//ignored.printStackTrace();
 			}
