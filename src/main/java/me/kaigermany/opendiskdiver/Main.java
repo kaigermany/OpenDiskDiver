@@ -6,7 +6,6 @@ import java.util.ArrayList;
 
 import me.kaigermany.opendiskdiver.data.DriveInfo;
 import me.kaigermany.opendiskdiver.data.Reader;
-import me.kaigermany.opendiskdiver.data.fat.FatEntryFinder;
 import me.kaigermany.opendiskdiver.data.fat.FatReader;
 import me.kaigermany.opendiskdiver.data.ntfs.NtfsReader;
 import me.kaigermany.opendiskdiver.data.partition.Partition;
@@ -20,6 +19,7 @@ import me.kaigermany.opendiskdiver.reader.ImageFileReader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.reader.ZipFileReader;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
+import me.kaigermany.opendiskdiver.utils.OpenFileDialog;
 import me.kaigermany.opendiskdiver.utils.Platform;
 import me.kaigermany.opendiskdiver.windows.SelectDriveGui;
 import me.kaigermany.opendiskdiver.windows.WindowsDrives;
@@ -74,25 +74,88 @@ public class Main {
 	}
 	
 	public static void main(String[] args) {
-		UI ui = createUI();
-		int id = ui.cooseFromList("Welcome! Please coose your operation mode:", new String[]{
-				"Anaylzer Mode",	//call classic parsers.
-				"Copy Mode",		//allow disk copy tasks.
-				"Recovery Mode"		//specialized algorithms that try to recover as much as possible out of the given data.
-		});
-		try{
-			ReadableSource source = null;
-			switch (id) {
-			case 0:
-				source = ui.cooseSource();
-				break;
-
-			default:
-				break;
+		final UI ui = createUI();
+		while(true){
+			int id = ui.cooseFromList("Welcome! Please coose your operation mode:", new String[]{
+					"Anaylzer Mode",	//call classic parsers.
+					"Copy Mode",		//allow disk copy tasks.
+					"Recovery Mode",	//specialized algorithms that try to recover as much as possible out of the given data.
+					"Exit"
+			});
+			try{
+				ReadableSource source = null;
+				switch (id) {
+					case 0:
+						source = ui.cooseSource();
+						analyzeSource(source);
+						continue;
+					case 1:
+						source = ui.cooseSource();
+						int type = ui.cooseFromList("Please select an output file type:", new String[]{
+								".img - raw disk image",
+								".zip - zip file with blocks of compressed sectors",
+								"Abbort"
+						});
+						if(type == 2) continue;
+						
+						File outFile = null;
+						while(true){
+							outFile = ui.saveAs();
+							if(outFile.exists()){
+								int answer = ui.cooseFromList("File already exists!", new String[]{
+										"Rename it",
+										"continue and override it",
+										"Abbort"
+								});
+								if(answer == 0) continue;
+								if(answer == 2) outFile = null;
+								break;
+							} else {
+								break;
+							}
+						}
+						if(outFile == null) continue;
+						
+						long freeBytesOnTargetDisk = outFile.getUsableSpace();
+						long bytesNeeded = source.numSectors() * 512;
+						if(freeBytesOnTargetDisk < bytesNeeded){
+							String title = "Warning: not enough space: expected: " 
+									+ SelectDriveGui.toHumanReadableFileSize(bytesNeeded) + ", avaliable: "
+									+ SelectDriveGui.toHumanReadableFileSize(freeBytesOnTargetDisk) + " -> missing: "
+									+ SelectDriveGui.toHumanReadableFileSize(bytesNeeded - freeBytesOnTargetDisk) + " - CONTINUE?";
+							int answer = ui.cooseFromList(title, new String[]{
+									"No",
+									"Yes"
+							});
+							if(answer == 0) continue;
+						}
+						
+						switch(type){
+							case 0: {
+								ImageFileWriter.write(source, outFile);
+								break;
+							}
+							case 1: {
+								ZipFileWriter.write(source, outFile, (1 << 20) / 512);
+								break;
+							}
+						}
+						continue;
+					case 2:
+						source = ui.cooseSource();
+						continue;
+					case 3:
+						ui.close();
+						return;
+				}
+			
+			} catch (Exception e) {
+				e.printStackTrace();
 			}
-			
-			
-			
+		}
+	}
+		
+		private static void analyzeSource(ReadableSource source) throws IOException {
 			PartitionReader r = new PartitionReader(source);
 			ArrayList<Partition> partitions = r.getPartitions();
 			System.out.println("found partitions: " + partitions);
@@ -120,48 +183,33 @@ public class Main {
 					reader.read(source);
 				}
 			}
-			
-			
-			
-			//ImageFileWriter.write(partitions.get(0).source, new File("H:\\partition0.img"));
-			//ZipFileWriter.write(partitions.get(0).source, new File("H:\\partition0.img.zip"), (1 << 20) / 512);
-			//ImageFileWriter.write(partitions.get(0).source, new File("D:\\temp\\partition0.img"));
-			//ImageFileWriter.write(partitions.get(2).source, new File("D:\\temp\\partition2.img"));
-			//ZipFileWriter.write(source, diskImageZip, (1 << 20) / 512);
-			//ImageFileWriter.write(source, diskImageFile);
-			
 			/*
-			for(Partition p : r.getPartitions()){
-			//{Partition p = r.getPartitions().get(1);
-				byte[] buffer = new byte[512];
-				p.source.readSector(0, buffer);
-				ProbeResult result = Probe.detectType(buffer);
-				System.out.println(result);
-				
-				Reader reader = result.getSortedResults().get(0).getReader();
-				if(reader != null) reader.read(p.source);
-				/ *
-				if(reader instanceof NtfsReader){
-					NtfsReader ntfs = (NtfsReader)reader;
-					ntfs.read(p.source);
-					for(String file : ntfs.fileMap.keySet()){
-						//defender control
-						if(file != null && file.equalsIgnoreCase("defender")){
-							System.out.println(file);
-						}
+			if(reader instanceof NtfsReader){
+				NtfsReader ntfs = (NtfsReader)reader;
+				ntfs.read(p.source);
+				for(String file : ntfs.fileMap.keySet()){
+					//defender control
+					if(file != null && file.equalsIgnoreCase("defender")){
+						System.out.println(file);
 					}
 				}
-				* /
-				
 			}
 			*/
-		} catch (Exception e) {
-			e.printStackTrace();
+			
+			/*
+			PartitionReader r = new PartitionReader(diskSource);
+			System.out.println(r.getPartitions());
+			
+			ArrayList<FatReader.FileEntry> entries = FatEntryFinder.scanReader(diskSource);
+			System.out.println(entries.toString().replace("}, {", "},\n{"));
+			
+			FatReader fr = new FatReader();
+			fr.read(r.getPartitions().get(0).source);
+			 */
 		}
-	}
 	
 	public static UI createUI(){
-		if(Platform.isWindows() &false){
+		if(Platform.isWindows()){
 			return new WindowsUI();
 		} else {
 			return new UniversalUI();
@@ -171,7 +219,11 @@ public class Main {
 	public static interface UI {
 		int cooseFromList(String title, String[] entries);
 
+		File saveAs();
+
 		ReadableSource cooseSource() throws IOException;
+		
+		void close();
 	}
 	
 	public static class WindowsUI implements UI {
@@ -186,6 +238,17 @@ public class Main {
 		@Override
 		public ReadableSource cooseSource() throws IOException {
 			return new SelectDriveGui(screen, ci).selectDiskSource();
+		}
+
+		@Override
+		public void close() {
+			screen.close();
+		}
+
+		@Override
+		public File saveAs() {
+			File defaultSelection = new File(".").getAbsoluteFile();
+			return OpenFileDialog.userSaveFile("Save as", defaultSelection);
 		}
 		
 	}
@@ -219,6 +282,23 @@ public class Main {
 				return new ImageFileReader(file);
 			} else {
 				return drives.get(index).openReader();
+			}
+		}
+
+		@Override
+		public void close() {
+			System.out.println("Thanks for using OpenDiskDiver :)");
+		}
+
+		@Override
+		public File saveAs() {
+			System.out.println("Please enter a output file path:");
+			try{
+				String line = CmdGui.readLine().trim();
+				return new File(line);
+			}catch(Exception e){
+				e.printStackTrace();
+				return null;
 			}
 		}
 	}
