@@ -1,7 +1,5 @@
 package me.kaigermany.opendiskdiver.data.fat;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,7 +25,13 @@ public class FatReader implements Reader {
 	}
 	
 	public static boolean isFatFormated(byte[] bootSector){
-		return bootSector[510] == (byte)0x55 && bootSector[511] == (byte)0xAA;
+		if(bootSector[510] == (byte)0x55 && bootSector[511] == (byte)0xAA){
+			if(isExFat(bootSector)) return true;
+			
+			int FAT_copys = bootSector[16];
+			if(FAT_copys >= 1 && FAT_copys <= 2) return true; //classic number of copies.
+		}
+		return false;
 	}
 	
 	public static boolean isExFat(byte[] bootSector){
@@ -277,8 +281,10 @@ public class FatReader implements Reader {
 		*/
 
 		System.out.println(files.toString().replace("}, {", "},\n{"));
-		int sectorOffsetOfFATonDrive = 245;//13191
-		int[] clustors = readClusters(fats[0], 2919, bootSectorContainer.type);
+		/*
+		int sectorOffsetOfFATonDrive = 245;
+		
+		int[] clustors = readClusters(fats[0], 2616  , bootSectorContainer.type);
 		int[] runLenClusters = asRunLengthList(clustors);
 		System.out.println("BEGIN direct file location (in sectors):");
 		for(int i=0; i<runLenClusters.length; i+=2){
@@ -287,7 +293,8 @@ public class FatReader implements Reader {
 			System.out.println(plainDataOffset + " +" + plainLen);
 		}
 		System.out.println("END direct file location");
-		
+		*/
+		/*
 		{
 			//System.out.println(Arrays.toString(clustors));
 			System.out.println(Arrays.toString(asRunLengthList(clustors)));
@@ -298,8 +305,8 @@ public class FatReader implements Reader {
 			FileOutputStream fos = new FileOutputStream(new File("H:/dump.mp4"));
 			fos.write(container);
 			fos.close();
-			
 		}
+		*/
 		
 		runClusterPointerMapAnalysis(fats[1], bootSectorContainer.type);
 
@@ -471,6 +478,7 @@ public class FatReader implements Reader {
 		byte[] container = new byte[clustors.length * bytesPerClustor];
 		for (int i = 0; i < clustors.length; i++) {
 			source.readSectors((clustors[i] * bytesPerClustor + offsetFix) / 512, bytesPerClustor / 512, container, i * bytesPerClustor);
+			System.out.println("read cluster: " + ( (clustors[i] * bytesPerClustor + offsetFix) / 512 ));
 		}
 		readDirDirect(source, clustors, bytesPerClustor, offsetFix, dir, files, clustorMap, type, readDetetedEntrys, doneDirEntries, container);
 	}

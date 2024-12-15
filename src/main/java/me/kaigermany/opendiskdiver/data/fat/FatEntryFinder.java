@@ -6,14 +6,74 @@ import java.util.ArrayList;
 
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
+import me.kaigermany.opendiskdiver.utils.DumpUtils;
 
 public class FatEntryFinder {
 	public static ArrayList<FatReader.FileEntry> scanReader(ReadableSource reader) throws IOException {
-		ArrayList<FatReader.FileEntry> out = new ArrayList<FatReader.FileEntry>(256);
 		byte[] sectorBuffer = new byte[512];
+		long[] currentLoadedSectorPtr = new long[]{ -1 };
+		
+		ArrayList<FatReader.FileEntry> out = new ArrayList<FatReader.FileEntry>(256);
+		
 		long numSectors = reader.numSectors();
 		byte[] lastBlock = null;
 		
+		long numEntrysToScan = numSectors * 512 / 32;
+		byte[] entryBuffer = new byte[32];
+		for(long currReadPos=0; currReadPos<numEntrysToScan; currReadPos++){
+			readEntry(reader, currReadPos, sectorBuffer, currentLoadedSectorPtr, entryBuffer);
+
+			if(422789*512/32 == currReadPos){
+				System.out.println("POS1: ");
+				DumpUtils.binaryDump(entryBuffer);
+				System.out.println(isValidEntry(entryBuffer, 0, true));
+			}
+			if(371525*512/32 == currReadPos){
+				System.out.println("POS2: ");
+				DumpUtils.binaryDump(entryBuffer);
+				System.out.println(isValidEntry(entryBuffer, 0, true));
+			}
+			
+			if (!isValidEntry(entryBuffer, 0, false)) continue;
+			StringBuilder sb = new StringBuilder();
+			ByteArrayOutputStream nameEntriesRecorder = new ByteArrayOutputStream(2048);
+			nameEntriesRecorder.write(entryBuffer);
+			int crc = ChkSum(entryBuffer, 0);
+			
+			final int pos = 0;
+			
+			if(findAllNameExtensions2(reader, currReadPos, sectorBuffer, currentLoadedSectorPtr, entryBuffer, 1, sb, crc, nameEntriesRecorder)){
+				if(testNameBoundries(sb)){
+					//System.out.println("name: " + sb);
+					//DumpUtils.binaryDump(nameEntriesRecorder.toByteArray());
+					int fileIndex = ((sectorBuffer[pos + 21] & 0xFF) << 24) | ((sectorBuffer[pos + 20] & 0xFF) << 16)
+							| ((sectorBuffer[pos + 27] & 0xFF) << 8) | (sectorBuffer[pos + 26] & 0xFF);
+					int fileSize = ((sectorBuffer[pos + 31] & 0xFF) << 24) | ((sectorBuffer[pos + 30] & 0xFF) << 16)
+							| ((sectorBuffer[pos + 29] & 0xFF) << 8) | (sectorBuffer[pos + 28] & 0xFF);
+					
+					//indexToLengthMap.put((long)fileIndex, (long)fileSize);
+					System.out.println("name: " + sb + " \t\t fileIndex="+fileIndex+",fileSize="+fileSize);
+					//System.out.println(Integer.toHexString(fileIndex) + "   " + Integer.toHexString(fileSize));
+					int[] objCoustors = new int[]{fileIndex};
+					int age = 0;
+					String fname = sb.toString();
+					out.add(new FatReader.FileEntry(new FatReader.Dir("LOST_AND_FOUND/"), fname, age, objCoustors, fileSize));
+			
+				} else {
+					System.out.println("testNameBoundries() -> false.");
+				}
+			} else {
+				System.out.println("findAllNameExtensions() -> false.");
+				DumpUtils.binaryDump(nameEntriesRecorder.toByteArray());
+				if((entryBuffer[13] & 0xFF) == crc){
+					System.out.println("found valid DOS entry!");
+				}
+				
+			}
+		}
+		
+		
+		/*
 		for(long readPos = 0; readPos < numSectors; readPos++){
 			reader.readSector(readPos, sectorBuffer);
 			
@@ -37,18 +97,19 @@ public class FatEntryFinder {
 						//indexToLengthMap.put((long)fileIndex, (long)fileSize);
 						System.out.println("name: " + sb + " \t\t fileIndex="+fileIndex+",fileSize="+fileSize);
 						//System.out.println(Integer.toHexString(fileIndex) + "   " + Integer.toHexString(fileSize));
-						/*
+						/ *
 						if(reader != null){
 							int[] objCoustors = FatReader.readClusters(reader.fats[0], fileIndex, reader.type);
 							int age = 0;
 							String fname = sb.toString();
 							out.add(new FatReader.FileEntry(new FatReader.Dir("LOST_AND_FOUND/"), fname, age, objCoustors, fileSize));
 						}
-						*/
+						* /
 						int[] objCoustors = new int[]{fileIndex};
 						int age = 0;
 						String fname = sb.toString();
 						out.add(new FatReader.FileEntry(new FatReader.Dir("LOST_AND_FOUND/"), fname, age, objCoustors, fileSize));
+				
 					} else {
 						System.out.println("testNameBoundries() -> false.");
 					}
@@ -59,8 +120,54 @@ public class FatEntryFinder {
 				
 			}
 		}
-		
+		*/
 		return out;
+	}
+	
+	private static void readEntry(ReadableSource reader, long entryLocationOffset, byte[] sectorBuffer, long[] currentLoadedSectorPtr, byte[] outBuf) throws IOException{
+		long byteOffset = entryLocationOffset * 32;
+		long sector = byteOffset / 512;
+		if(sector != currentLoadedSectorPtr[0]){
+			currentLoadedSectorPtr[0] = sector;
+			reader.readSector(sector, sectorBuffer);
+		}
+		int off = (int)(byteOffset % 512);
+		for(int i=0; i<32; i++){
+			outBuf[i] = sectorBuffer[i + off];
+		}
+	}
+	
+	private static boolean findAllNameExtensions2(ReadableSource reader, long entryLocationOffset, byte[] sectorBuffer, long[] currentLoadedSectorPtr, byte[] block, int depth, StringBuilder nameRecorder, int expectedCheckSum, ByteArrayOutputStream nameEntriesRecorder) throws IOException{
+		entryLocationOffset--;
+		if(entryLocationOffset < 0) return false;
+		
+		readEntry(reader, entryLocationOffset, sectorBuffer, currentLoadedSectorPtr, block);
+		nameEntriesRecorder.write(block);
+		
+		final int pos = 0;
+		int entryID = block[pos] & 0x3F;
+		System.out.println("entryID="+entryID);
+		if(entryID != depth) {//not the right order (ignoring end-node flags) ?
+			return false;
+		}
+		
+		if(block[pos + 11] != 0x0F) return false;//not an extension entry?
+		if(block[pos + 26] != 0 && block[pos + 27] != 0) return false;//first-cluster value != 0?
+		if((block[pos + 13] & 0xFF) != expectedCheckSum) return false;//this entry does'nt seem to be related to our parent or is damaged!
+		
+		nameRecorder.append(newStr(block, pos + 1, 10)); // +5 chars
+		nameRecorder.append(newStr(block, pos + 14, 12));// +6 chars
+		nameRecorder.append(newStr(block, pos + 28, 4)); // +2 chars
+		System.out.println((block[pos] & 0x7F) + " == " + (0x40 | depth) + " ( " + depth + " ) ");
+		if((block[pos] & 0x7F) == (0x40 | depth)) {//is end-node?
+			System.out.println("endnode.");
+			//crc compare
+			//int crc = ChkSum(block, pos);
+			//System.out.println("crc="+crc + ", expectedCheckSum="+expectedCheckSum);
+			return true;
+		} else {//find next node until completely resolved.
+			return findAllNameExtensions2(reader, entryLocationOffset, sectorBuffer, currentLoadedSectorPtr, block, depth+1, nameRecorder, expectedCheckSum, nameEntriesRecorder);
+		}
 	}
 
 	private static boolean testNameBoundries(StringBuilder sb) {
@@ -88,7 +195,10 @@ public class FatEntryFinder {
 		pos -= 32;//seek to the previous entry.
 		if(pos < 0){
 			block = lastBlock;
-			if(block == null) return false;
+			if(block == null){
+				System.out.println("EOF?");
+				return false;
+			}
 			pos += block.length;
 		}
 		if(pos < 0) return false;//out of range
@@ -97,7 +207,7 @@ public class FatEntryFinder {
 		if((block[pos] & 0x3F) != depth) {//not the right order (ignoring end-node flags) ?
 			return false;
 		}
-		if(block[pos + 11] != 0x0F) //not an extension entry?
+		if(block[pos + 11] != 0x0F) return false;//not an extension entry?
 		if(block[pos + 26] != 0 && block[pos + 27] != 0) return false;//first-cluster value != 0?
 		if((block[pos + 13] & 0xFF) != expectedCheckSum) return false;//this entry does'nt seem to be related to our parent or is damaged!
 		
@@ -141,7 +251,7 @@ public class FatEntryFinder {
 		return Sum & 0xFF;
 	}
 	
-	private static boolean isValidEntry(byte[] entry, int off) {
+	private static boolean isValidEntry(byte[] entry, int off, boolean debug) {
 		if (ByteArrayUtils.isEmpty(entry, off, 32)) {
 			return false;
 		}
@@ -158,19 +268,33 @@ public class FatEntryFinder {
 		if (entry[off + 12] != 0) {// expect const 0
 			return false;
 		}
-
+if(debug)System.out.println("P1");
 		if ((entry[off + 13] & 0xFF) >= 200) {// invalid tenths-of-sec-value?
 			return false;
 		}
 
 		// Check attribute
 		int attr = entry[off + 11] & 0xFF;
-		
+		/*
 		//all valid attributes.
 		if(!(attr == 0x01 || attr == 0x10 || attr == 0x20 || attr == 0x30 || attr == 0x08 || attr == 0x40 || attr == 0x0F)){
 			return false;
 		}
-		
+		*/
+		if((attr & 0xC0) != 0){
+			return false;
+		}
+		if(entry[0] == '.'){
+			if(entry[1] == '.' || entry[1] == ' '){
+				for(int i=2; i<11; i++){
+					if(entry[i] != ' ') return false;
+				}
+				return true;
+			}
+		}
+		if(entry[0] == 0xE5 || entry[0] == 0){
+			entry[0] = 'A';
+		}
 		return testFor8Dot3Name(entry, off, true);
 	}
 	
