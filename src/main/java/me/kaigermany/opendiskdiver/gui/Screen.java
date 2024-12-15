@@ -101,4 +101,8 @@ public class Screen {
 			backgroundColorMap[pos] = backgroundColor;
 		}
 	}
+	
+	public void close(){
+		console.close();
+	}
 }
