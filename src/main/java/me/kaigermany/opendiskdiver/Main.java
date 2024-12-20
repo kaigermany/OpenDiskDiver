@@ -91,55 +91,7 @@ public class Main {
 						continue;
 					case 1:
 						source = ui.cooseSource();
-						int type = ui.cooseFromList("Please select an output file type:", new String[]{
-								".img - raw disk image",
-								".zip - zip file with blocks of compressed sectors",
-								"Abbort"
-						});
-						if(type == 2) continue;
-						
-						File outFile = null;
-						while(true){
-							outFile = ui.saveAs();
-							if(outFile.exists()){
-								int answer = ui.cooseFromList("File already exists!", new String[]{
-										"Rename it",
-										"continue and override it",
-										"Abbort"
-								});
-								if(answer == 0) continue;
-								if(answer == 2) outFile = null;
-								break;
-							} else {
-								break;
-							}
-						}
-						if(outFile == null) continue;
-						
-						long freeBytesOnTargetDisk = outFile.getUsableSpace();
-						long bytesNeeded = source.numSectors() * 512;
-						if(freeBytesOnTargetDisk < bytesNeeded){
-							String title = "Warning: not enough space: expected: " 
-									+ SelectDriveGui.toHumanReadableFileSize(bytesNeeded) + ", avaliable: "
-									+ SelectDriveGui.toHumanReadableFileSize(freeBytesOnTargetDisk) + " -> missing: "
-									+ SelectDriveGui.toHumanReadableFileSize(bytesNeeded - freeBytesOnTargetDisk) + " - CONTINUE?";
-							int answer = ui.cooseFromList(title, new String[]{
-									"No",
-									"Yes"
-							});
-							if(answer == 0) continue;
-						}
-						
-						switch(type){
-							case 0: {
-								ImageFileWriter.write(source, outFile);
-								break;
-							}
-							case 1: {
-								ZipFileWriter.write(source, outFile, (1 << 20) / 512);
-								break;
-							}
-						}
+						copySource(source, ui);
 						continue;
 					case 2:
 						source = ui.cooseSource();
@@ -154,59 +106,120 @@ public class Main {
 			}
 		}
 	}
+	
+	private static void copySource(ReadableSource source, UI ui) throws IOException {
+		int type = ui.cooseFromList("Please select an output file type:", new String[]{
+				".img - raw disk image",
+				".zip - zip file with blocks of compressed sectors",
+				"Abbort"
+		});
+		if(type == 2) return;
 		
-		private static void analyzeSource(ReadableSource source) throws IOException {
-			PartitionReader r = new PartitionReader(source);
-			ArrayList<Partition> partitions = r.getPartitions();
-			System.out.println("found partitions: " + partitions);
-			if(partitions.size() > 0){
-				for(Partition p : partitions){
-					System.out.println(p);
-					byte[] buffer = new byte[512];
-					p.source.readSector(0, buffer);
-					ProbeResult result = Probe.detectType(buffer);
-					System.out.println(result);
-					Reader reader = result.getSortedResults().get(0).getReader();
-					if(reader != null) {
-						reader.read(p.source);
-						break;
-					}
-				}
+		File outFile = null;
+		while(true){
+			outFile = ui.saveAs();
+			if(outFile.exists()){
+				int answer = ui.cooseFromList("File already exists!", new String[]{
+						"Rename it",
+						"continue and override it",
+						"Abbort"
+				});
+				if(answer == 0) continue;
+				if(answer == 2) outFile = null;
+				break;
 			} else {
-				System.out.println("no partitions found, try direct type detection...");
+				break;
+			}
+		}
+		if(outFile == null) return;
+		
+		long freeBytesOnTargetDisk = getSpaceOnDisk(outFile);//.getFreeSpace();//outFile.getUsableSpace();
+		long bytesNeeded = source.numSectors() * 512;
+		if(freeBytesOnTargetDisk < bytesNeeded){
+			String title = "Warning: not enough space: expected: " 
+					+ SelectDriveGui.toHumanReadableFileSize(bytesNeeded) + ", avaliable: "
+					+ SelectDriveGui.toHumanReadableFileSize(freeBytesOnTargetDisk) + " -> missing: "
+					+ SelectDriveGui.toHumanReadableFileSize(bytesNeeded - freeBytesOnTargetDisk) + " - CONTINUE?";
+			int answer = ui.cooseFromList(title, new String[]{
+					"No",
+					"Yes"
+			});
+			if(answer == 0) return;
+		}
+		
+		switch(type){
+			case 0: {
+				ImageFileWriter.write(source, outFile);
+				break;
+			}
+			case 1: {
+				ZipFileWriter.write(source, outFile, (1 << 20) / 512);
+				break;
+			}
+		}
+	}
+	
+	private static long getSpaceOnDisk(File fileOnDisk){
+		File root = fileOnDisk;
+		while(fileOnDisk != null){
+			root = fileOnDisk;
+			fileOnDisk = fileOnDisk.getParentFile();
+		}
+		return root.getUsableSpace();
+	}
+	
+	private static void analyzeSource(ReadableSource source) throws IOException {
+		PartitionReader r = new PartitionReader(source);
+		ArrayList<Partition> partitions = r.getPartitions();
+		System.out.println("found partitions: " + partitions);
+		if(partitions.size() > 0){
+			for(Partition p : partitions){
+				System.out.println(p);
 				byte[] buffer = new byte[512];
-				source.readSector(0, buffer);
+				p.source.readSector(0, buffer);
 				ProbeResult result = Probe.detectType(buffer);
 				System.out.println(result);
 				Reader reader = result.getSortedResults().get(0).getReader();
 				if(reader != null) {
-					reader.read(source);
+					reader.read(p.source);
+					break;
 				}
 			}
-			/*
-			if(reader instanceof NtfsReader){
-				NtfsReader ntfs = (NtfsReader)reader;
-				ntfs.read(p.source);
-				for(String file : ntfs.fileMap.keySet()){
-					//defender control
-					if(file != null && file.equalsIgnoreCase("defender")){
-						System.out.println(file);
-					}
-				}
+		} else {
+			System.out.println("no partitions found, try direct type detection...");
+			byte[] buffer = new byte[512];
+			source.readSector(0, buffer);
+			ProbeResult result = Probe.detectType(buffer);
+			System.out.println(result);
+			Reader reader = result.getSortedResults().get(0).getReader();
+			if(reader != null) {
+				reader.read(source);
 			}
-			*/
-			
-			/*
-			PartitionReader r = new PartitionReader(diskSource);
-			System.out.println(r.getPartitions());
-			
-			ArrayList<FatReader.FileEntry> entries = FatEntryFinder.scanReader(diskSource);
-			System.out.println(entries.toString().replace("}, {", "},\n{"));
-			
-			FatReader fr = new FatReader();
-			fr.read(r.getPartitions().get(0).source);
-			 */
 		}
+		/*
+		if(reader instanceof NtfsReader){
+			NtfsReader ntfs = (NtfsReader)reader;
+			ntfs.read(p.source);
+			for(String file : ntfs.fileMap.keySet()){
+				//defender control
+				if(file != null && file.equalsIgnoreCase("defender")){
+					System.out.println(file);
+				}
+			}
+		}
+		*/
+		
+		/*
+		PartitionReader r = new PartitionReader(diskSource);
+		System.out.println(r.getPartitions());
+		
+		ArrayList<FatReader.FileEntry> entries = FatEntryFinder.scanReader(diskSource);
+		System.out.println(entries.toString().replace("}, {", "},\n{"));
+		
+		FatReader fr = new FatReader();
+		fr.read(r.getPartitions().get(0).source);
+		 */
+	}
 	
 	public static UI createUI(){
 		if(Platform.isWindows()){
