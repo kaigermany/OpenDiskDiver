@@ -4,26 +4,21 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 
-import me.kaigermany.opendiskdiver.data.DriveInfo;
 import me.kaigermany.opendiskdiver.data.Reader;
 import me.kaigermany.opendiskdiver.data.fat.FatReader;
 import me.kaigermany.opendiskdiver.data.ntfs.NtfsReader;
 import me.kaigermany.opendiskdiver.data.partition.Partition;
 import me.kaigermany.opendiskdiver.data.partition.PartitionReader;
-import me.kaigermany.opendiskdiver.gui.CmdGui;
-import me.kaigermany.opendiskdiver.gui.Screen;
+import me.kaigermany.opendiskdiver.gui.UI;
+import me.kaigermany.opendiskdiver.gui.UniversalUI;
+import me.kaigermany.opendiskdiver.gui.WindowsUI;
 import me.kaigermany.opendiskdiver.probe.Probe;
 import me.kaigermany.opendiskdiver.probe.ProbeFunction;
 import me.kaigermany.opendiskdiver.probe.ProbeResult;
-import me.kaigermany.opendiskdiver.reader.ImageFileReader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
-import me.kaigermany.opendiskdiver.reader.ZipFileReader;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
-import me.kaigermany.opendiskdiver.utils.OpenFileDialog;
 import me.kaigermany.opendiskdiver.utils.Platform;
 import me.kaigermany.opendiskdiver.windows.SelectDriveGui;
-import me.kaigermany.opendiskdiver.windows.WindowsDrives;
-import me.kaigermany.opendiskdiver.windows.console.ConsoleInterface;
 import me.kaigermany.opendiskdiver.writer.ImageFileWriter;
 import me.kaigermany.opendiskdiver.writer.ZipFileWriter;
 
@@ -133,7 +128,7 @@ public class Main {
 		}
 		if(outFile == null) return;
 		
-		long freeBytesOnTargetDisk = getSpaceOnDisk(outFile);//.getFreeSpace();//outFile.getUsableSpace();
+		long freeBytesOnTargetDisk = getFreeSpaceOnDisk(outFile);//.getFreeSpace();//outFile.getUsableSpace();
 		long bytesNeeded = source.numSectors() * 512;
 		if(freeBytesOnTargetDisk < bytesNeeded){
 			String title = "Warning: not enough space: expected: " 
@@ -159,7 +154,7 @@ public class Main {
 		}
 	}
 	
-	private static long getSpaceOnDisk(File fileOnDisk){
+	private static long getFreeSpaceOnDisk(File fileOnDisk){
 		File root = fileOnDisk;
 		while(fileOnDisk != null){
 			root = fileOnDisk;
@@ -222,97 +217,10 @@ public class Main {
 	}
 	
 	public static UI createUI(){
-		if(Platform.isWindows()){
+		if(Platform.isWindows() &false){
 			return new WindowsUI();
 		} else {
 			return new UniversalUI();
-		}
-	}
-	
-	public static interface UI {
-		int cooseFromList(String title, String[] entries);
-
-		File saveAs();
-
-		ReadableSource cooseSource() throws IOException;
-		
-		void close();
-	}
-	
-	public static class WindowsUI implements UI {
-		private static ConsoleInterface ci = new ConsoleInterface();
-		private static Screen screen = new Screen(1, 1, ci);
-
-		@Override
-		public int cooseFromList(String title, String[] entries) {
-			return new SelectDriveGui(screen, ci).selectListEntry(title, entries);
-		}
-
-		@Override
-		public ReadableSource cooseSource() throws IOException {
-			return new SelectDriveGui(screen, ci).selectDiskSource();
-		}
-
-		@Override
-		public void close() {
-			screen.close();
-		}
-
-		@Override
-		public File saveAs() {
-			File defaultSelection = new File(".").getAbsoluteFile();
-			return OpenFileDialog.userSaveFile("Save as", defaultSelection);
-		}
-		
-	}
-	
-	public static class UniversalUI implements UI {
-		@Override
-		public int cooseFromList(String title, String[] entries) {
-			System.out.println();
-			System.out.println(title);
-			return CmdGui.listSelectBlocking(entries);
-		}
-
-		@Override
-		public ReadableSource cooseSource() throws IOException {
-			ArrayList<DriveInfo> drives = WindowsDrives.listDrives();
-			String[] list = new String[drives.size() + 2];
-			for(int i=0; i<drives.size(); i++){
-				DriveInfo drive = drives.get(i);
-				list[i] = SelectDriveGui.toHumanReadableFileSize(drive.size) + " \t " + drive.name;
-			}
-			int selectImgIndex = list.length - 2;
-			int selectZipIndex = list.length - 1;
-			list[selectImgIndex] = SelectDriveGui.pseudoSources[0];
-			list[selectZipIndex] = SelectDriveGui.pseudoSources[1];
-			int index = CmdGui.listSelectBlocking(list);
-			if(index == selectImgIndex){
-				File file = CmdGui.askForFilePathBlocking();
-				return new ZipFileReader(file);
-			} else if(index == selectZipIndex) {
-				File file = CmdGui.askForFilePathBlocking();
-				return new ImageFileReader(file);
-			} else {
-				return drives.get(index).openReader();
-			}
-		}
-
-		@Override
-		public void close() {
-			System.out.println("Thanks for using OpenDiskDiver :)");
-		}
-
-		@Override
-		public File saveAs() {
-			System.out.println("Please enter a output file path:");
-			try{
-				String line = CmdGui.readLine().trim();
-				return new File(line);
-			}catch(Exception e){
-				e.printStackTrace();
-				return null;
-			}
 		}
 	}
 }
