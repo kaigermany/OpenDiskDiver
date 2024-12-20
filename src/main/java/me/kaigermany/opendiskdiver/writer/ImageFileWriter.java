@@ -1,14 +1,13 @@
 package me.kaigermany.opendiskdiver.writer;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 
 public class ImageFileWriter {
 	public static void write(ReadableSource reader, File out) throws IOException {
-		FileOutputStream fos = new FileOutputStream(out);
+		DirectFileOutputStream fos = new DirectFileOutputStream(out);
 		byte[] buf = new byte[1 << 20];
 		int maxLen = (1 << 20) / 512;
 		long pos = 0;

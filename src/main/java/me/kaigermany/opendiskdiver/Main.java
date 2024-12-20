@@ -69,7 +69,7 @@ public class Main {
 	}
 	
 	public static void main(String[] args) {
-		final UI ui = createUI();
+		final UI ui = createUI(false);
 		while(true){
 			int id = ui.cooseFromList("Welcome! Please coose your operation mode:", new String[]{
 					"Anaylzer Mode",	//call classic parsers.
@@ -216,8 +216,8 @@ public class Main {
 		 */
 	}
 	
-	public static UI createUI(){
-		if(Platform.isWindows() &false){
+	public static UI createUI(boolean useNativeUI){
+		if(Platform.isWindows() && !useNativeUI){
 			return new WindowsUI();
 		} else {
 			return new UniversalUI();
