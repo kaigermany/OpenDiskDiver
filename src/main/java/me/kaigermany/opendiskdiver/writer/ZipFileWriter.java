@@ -10,48 +10,20 @@ import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 
 public class ZipFileWriter implements Writer {
-	public static void write(ReadableSource reader, File out) throws IOException {
-		/*
-		
-		
-		
-		
-		byte[] block = new byte[512 * blockSizeInSectors];
-		long offset = 0;
-		int blockCount = 0;
-		while(offset < maxNumSectors){
-			long sectorsToCopy = maxNumSectors - offset;
-			if(sectorsToCopy > blockSizeInSectors) sectorsToCopy = blockSizeInSectors;
-			
-			reader.readSectors(offset, (int)sectorsToCopy, block);
-			
-			if(!ByteArrayUtils.isEmpty(block, 0, (int)(sectorsToCopy * 512))){
-				zos.putNextEntry(new ZipEntry(String.valueOf(offset)));
-				zos.write(block, 0, (int)(sectorsToCopy * 512));
-				zos.closeEntry();
-			}
-			
-			offset += sectorsToCopy;
-			
-			blockCount++;
-			System.out.println(blockCount + " / " + numExpectedBlocks);
-		}
-		*/
-	}
-	
 	private ZipOutputStream zos;
 	private int blockSizeInSectors = (1 << 20) / 512;
-	private long numExpectedBlocks;
 	private byte[] writeBuffer;
 	private int writePointer = 0;
 	private long writtenSectorOffset = 0;
+	
+	public ZipFileWriter(){}
 	
 	@Override
 	public void create(File file, ReadableSource readerReference) throws IOException {
 		zos = new ZipOutputStream(new BufferedOutputStream(new DirectFileOutputStream(file), 128 << 20));
 		//zos.setLevel(java.util.zip.Deflater.BEST_COMPRESSION);
 		final long maxNumSectors = readerReference.numSectors();
-		numExpectedBlocks = maxNumSectors / blockSizeInSectors;
+		//numExpectedBlocks = maxNumSectors / blockSizeInSectors;
 		zos.putNextEntry(new ZipEntry("info.txt"));
 		zos.write((
 				"driveSizeInSectors=" + maxNumSectors + "\r\n" +

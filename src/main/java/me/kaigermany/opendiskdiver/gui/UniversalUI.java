@@ -9,7 +9,7 @@ import me.kaigermany.opendiskdiver.data.DriveInfo;
 import me.kaigermany.opendiskdiver.reader.ImageFileReader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.reader.ZipFileReader;
-import me.kaigermany.opendiskdiver.windows.SelectDriveGui;
+import me.kaigermany.opendiskdiver.utils.Utils;
 
 public class UniversalUI implements UI {
 	@Override
@@ -25,12 +25,12 @@ public class UniversalUI implements UI {
 		String[] list = new String[drives.size() + 2];
 		for(int i=0; i<drives.size(); i++){
 			DriveInfo drive = drives.get(i);
-			list[i] = SelectDriveGui.toHumanReadableFileSize(drive.size) + " \t " + drive.name;
+			list[i] = Utils.toHumanReadableFileSize(drive.size) + " \t " + drive.name;
 		}
 		int selectImgIndex = list.length - 2;
 		int selectZipIndex = list.length - 1;
-		list[selectImgIndex] = SelectDriveGui.pseudoSources[0];
-		list[selectZipIndex] = SelectDriveGui.pseudoSources[1];
+		list[selectImgIndex] = WindowsUI.pseudoSources[0];
+		list[selectZipIndex] = WindowsUI.pseudoSources[1];
 		int index = CmdGui.listSelectBlocking(list);
 		if(index == selectImgIndex){
 			File file = CmdGui.askForFilePathBlocking();

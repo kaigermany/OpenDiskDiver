@@ -18,14 +18,12 @@ import me.kaigermany.opendiskdiver.probe.ProbeResult;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 import me.kaigermany.opendiskdiver.utils.Platform;
-import me.kaigermany.opendiskdiver.windows.SelectDriveGui;
+import me.kaigermany.opendiskdiver.utils.Utils;
 import me.kaigermany.opendiskdiver.writer.ImageFileWriter;
 import me.kaigermany.opendiskdiver.writer.Writer;
 import me.kaigermany.opendiskdiver.writer.ZipFileWriter;
 
 public class Main {
-	
-	
 	static{
 		Probe.regiterProbeTester(new ProbeFunction() {
 			@Override
@@ -66,7 +64,6 @@ public class Main {
 				return ByteArrayUtils.isEmptySector(sampleData) ? 1 : 0;
 			}
 		});
-		
 	}
 	
 	public static void main(String[] args) {
@@ -133,9 +130,9 @@ public class Main {
 		long bytesNeeded = source.numSectors() * 512;
 		if(freeBytesOnTargetDisk < bytesNeeded){
 			String title = "Warning: not enough space: expected: " 
-					+ SelectDriveGui.toHumanReadableFileSize(bytesNeeded) + ", avaliable: "
-					+ SelectDriveGui.toHumanReadableFileSize(freeBytesOnTargetDisk) + " -> missing: "
-					+ SelectDriveGui.toHumanReadableFileSize(bytesNeeded - freeBytesOnTargetDisk) + " - CONTINUE?";
+					+ Utils.toHumanReadableFileSize(bytesNeeded) + ", avaliable: "
+					+ Utils.toHumanReadableFileSize(freeBytesOnTargetDisk) + " -> missing: "
+					+ Utils.toHumanReadableFileSize(bytesNeeded - freeBytesOnTargetDisk) + " - CONTINUE?";
 			int answer = ui.cooseFromList(title, new String[]{
 					"No",
 					"Yes"
