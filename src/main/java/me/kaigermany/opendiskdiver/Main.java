@@ -20,6 +20,7 @@ import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 import me.kaigermany.opendiskdiver.utils.Platform;
 import me.kaigermany.opendiskdiver.windows.SelectDriveGui;
 import me.kaigermany.opendiskdiver.writer.ImageFileWriter;
+import me.kaigermany.opendiskdiver.writer.Writer;
 import me.kaigermany.opendiskdiver.writer.ZipFileWriter;
 
 public class Main {
@@ -141,17 +142,32 @@ public class Main {
 			});
 			if(answer == 0) return;
 		}
-		
+		Writer writer = null;
 		switch(type){
 			case 0: {
-				ImageFileWriter.write(source, outFile);
+				writer = new ImageFileWriter();
 				break;
 			}
 			case 1: {
-				ZipFileWriter.write(source, outFile, (1 << 20) / 512);
+				writer = new ZipFileWriter();
 				break;
 			}
 		}
+		writer.create(outFile, source);
+		byte[] buf = new byte[2 << 20];
+		int maxLen = buf.length / 512;
+		long pos = 0;
+		long maxPos = source.numSectors();
+		
+		while(pos < maxPos){
+			int numSectorsToRead = (int)Math.min(maxPos - pos, maxLen);
+			source.readSectors(pos, numSectorsToRead, buf, 0);
+			writer.write(buf, numSectorsToRead * 512);
+			pos += numSectorsToRead;
+			System.out.println(pos + " / " + maxPos);
+		}
+		
+		writer.close();
 	}
 	
 	private static long getFreeSpaceOnDisk(File fileOnDisk){

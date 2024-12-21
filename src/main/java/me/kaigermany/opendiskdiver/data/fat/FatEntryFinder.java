@@ -16,7 +16,7 @@ public class FatEntryFinder {
 		ArrayList<FatReader.FileEntry> out = new ArrayList<FatReader.FileEntry>(256);
 		
 		long numSectors = reader.numSectors();
-		byte[] lastBlock = null;
+		//byte[] lastBlock = null;
 		
 		long numEntrysToScan = numSectors * 512 / 32;
 		byte[] entryBuffer = new byte[32];
