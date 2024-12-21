@@ -5,9 +5,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 
 import me.kaigermany.opendiskdiver.data.DriveInfo;
+import me.kaigermany.opendiskdiver.linux.LinuxDrives;
 import me.kaigermany.opendiskdiver.reader.ImageFileReader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.reader.ZipFileReader;
+import me.kaigermany.opendiskdiver.utils.Platform;
 import me.kaigermany.opendiskdiver.windows.SelectDriveGui;
 import me.kaigermany.opendiskdiver.windows.WindowsDrives;
 
@@ -21,7 +23,7 @@ public class UniversalUI implements UI {
 
 	@Override
 	public ReadableSource cooseSource() throws IOException {
-		ArrayList<DriveInfo> drives = WindowsDrives.listDrives();
+		ArrayList<DriveInfo> drives = Platform.isWindows() ? WindowsDrives.listDrives() : LinuxDrives.listDrives();
 		String[] list = new String[drives.size() + 2];
 		for(int i=0; i<drives.size(); i++){
 			DriveInfo drive = drives.get(i);
