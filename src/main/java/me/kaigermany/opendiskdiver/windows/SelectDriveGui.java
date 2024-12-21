@@ -3,14 +3,13 @@ package me.kaigermany.opendiskdiver.windows;
 import java.io.IOException;
 import java.util.ArrayList;
 
+import me.kaigermany.opendiskdiver.DriveListProvider;
 import me.kaigermany.opendiskdiver.data.DriveInfo;
 import me.kaigermany.opendiskdiver.gui.Screen;
-import me.kaigermany.opendiskdiver.linux.LinuxDrives;
 import me.kaigermany.opendiskdiver.reader.ImageFileReader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.reader.ZipFileReader;
 import me.kaigermany.opendiskdiver.utils.OpenFileDialog;
-import me.kaigermany.opendiskdiver.utils.Platform;
 import me.kaigermany.opendiskdiver.windows.console.ConsoleInterface;
 import me.kaigermany.opendiskdiver.windows.console.ConsoleInterface.Pair;
 
@@ -32,8 +31,7 @@ public class SelectDriveGui {
 	}
 
 	public ReadableSource selectDiskSource() throws IOException {
-		ArrayList<DriveInfo> drives = Platform.isWindows() ? WindowsDrives.listDrives() : LinuxDrives.listDrives();
-				//WindowsDrives.listDrives();
+		ArrayList<DriveInfo> drives = DriveListProvider.listDrives();
 		
 		System.out.println(drives.toString().replace("}, {", "},\n{"));
 		numSlots = drives.size() + pseudoSources.length;
