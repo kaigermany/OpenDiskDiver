@@ -4,6 +4,20 @@ import me.kaigermany.opendiskdiver.windows.console.ConsoleInterface;
 
 public class Screen {
 	public static final String BLACK = "Black";
+	public static final String DARKBLUE = "DarkBlue";
+	public static final String DARKGREEN = "DarkGreen";
+	public static final String DARKCYAN = "DarkCyan";
+	public static final String DARKRED = "DarkRed";
+	public static final String DARKMAGENTA = "DarkMagenta";
+	public static final String DARKYELLOW = "DarkYellow";
+	public static final String GRAY = "Gray";
+	public static final String DARKGRAY = "DarkGray";
+	public static final String BLUE = "Blue";
+	public static final String GREEN = "Green";
+	public static final String CYAN = "Cyan";
+	public static final String RED = "Red";
+	public static final String MAGENTA = "Magenta";
+	public static final String YELLOW = "Yellow";
 	public static final String WHITE = "White";
 	
 	public char[] map;
