@@ -9,11 +9,11 @@ import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 import me.kaigermany.opendiskdiver.utils.DumpUtils;
 
 public class FatEntryFinder {
-	public static ArrayList<FatReader.FileEntry> scanReader(ReadableSource reader) throws IOException {
+	public static ArrayList<FatReader.FatFile> scanReader(ReadableSource reader) throws IOException {
 		byte[] sectorBuffer = new byte[512];
 		long[] currentLoadedSectorPtr = new long[]{ -1 };
 		
-		ArrayList<FatReader.FileEntry> out = new ArrayList<FatReader.FileEntry>(256);
+		ArrayList<FatReader.FatFile> out = new ArrayList<FatReader.FatFile>(256);
 		
 		long numSectors = reader.numSectors();
 		//byte[] lastBlock = null;
@@ -57,7 +57,7 @@ public class FatEntryFinder {
 					int[] objCoustors = new int[]{fileIndex};
 					int age = 0;
 					String fname = sb.toString();
-					out.add(new FatReader.FileEntry(new FatReader.Dir("LOST_AND_FOUND/"), fname, age, objCoustors, fileSize));
+					out.add(new FatReader.FatFile(new FatReader.Dir("LOST_AND_FOUND/"), fname, age, objCoustors, fileSize));
 			
 				} else {
 					System.out.println("testNameBoundries() -> false.");

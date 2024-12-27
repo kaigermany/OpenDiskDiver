@@ -1,17 +1,21 @@
 package me.kaigermany.opendiskdiver.data.fat;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 
 import me.kaigermany.opendiskdiver.data.Reader;
+import me.kaigermany.opendiskdiver.datafilesystem.FileEntry;
+import me.kaigermany.opendiskdiver.datafilesystem.FileSystem;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 
-public class FatReader implements Reader {
+public class FatReader implements Reader, FileSystem {
 	private static final byte[] EXFAT_SIGNATURE = "EXFAT   ".getBytes();
 	
 	private static long readLittleEndian(byte[] a, int offset, int len) {
@@ -202,14 +206,18 @@ public class FatReader implements Reader {
 		}
 	}
 	
-	public ArrayList<FileEntry> files = new ArrayList<FileEntry>();
+	public ArrayList<FatFile> files = new ArrayList<FatFile>();
 	public FatType type;
 	public int[][] fats;
+	
+	private ReadableSource source;
+	private long bytesPerClustor;
 	
 	public FatReader() {}
 
 	@Override
 	public void read(ReadableSource source) throws IOException {//TODO optimize codeflow for ExFAT
+		this.source = source;
 		byte[] bootSector = new byte[512];
 		source.readSector(0, bootSector);
 		//DumpUtils.binaryDump(bootSector);
@@ -222,6 +230,8 @@ public class FatReader implements Reader {
 		
 		FAT_BootSector bootSectorContainer = new FAT_BootSector(bootSector);
 		this.type = bootSectorContainer.type;
+		
+		bytesPerClustor = bootSectorContainer.bytes_per_sector * bootSectorContainer.sectors_per_clustor;
 		
 		//boolean isFAT32 = clusterCount > 65524L;
 		//boolean isFAT16 = clusterCount > 4084L & !isFAT32;
@@ -243,7 +253,7 @@ public class FatReader implements Reader {
 		int[] rootClustors = readClusters(fats[0], bootSectorContainer.rootClustorNumber, bootSectorContainer.type);
 		System.out.println(Arrays.toString(rootClustors));
 		long offsetFix = (bootSectorContainer.FirstDataSector * bootSectorContainer.bytes_per_sector);// - (bytesPerClustor * bootSectorContainer.rootClustorNumber);
-		Dir dir = new Dir("/");
+		Dir dir = new Dir("");//"/"
 		
 		if(bootSectorContainer.type == FatType.FAT32){
 			
@@ -310,6 +320,72 @@ public class FatReader implements Reader {
 		
 		runClusterPointerMapAnalysis(fats[1], bootSectorContainer.type);
 
+	}
+	
+	public static class FatFileEntry extends FileEntry {
+		private final int[] clustorList;
+		private final long bytesPerClustor;
+		private final ReadableSource source;
+		
+		public FatFileEntry(FatFile e, ReadableSource source, long clustorSizeInBytes) {
+			super(e.nameOnly, e.name, e.fileSize, e.age);
+			this.clustorList = e.clustors;
+			this.source = source;
+			this.bytesPerClustor = clustorSizeInBytes;
+		}
+
+		@Override
+		public InputStream openInputStream() {
+			return new InputStream(){
+				int clusterIndexPos = -1;
+				byte[] currentClustor = null;
+				int maxLen;
+				int currentPos;
+				@Override
+				public int read() throws IOException {
+					byte[] a = new byte[1];
+					int l = read(a, 0, 1);
+					return l == -1 ? -1 : (a[0] & 0xFF);
+				}
+
+				@Override
+				public int read(byte[] buf, int off, int len) throws IOException {
+					if(currentClustor == null){
+						if(clusterIndexPos >= clustorList.length) return -1;
+						clusterIndexPos++;
+						currentClustor = readCluster(clusterIndexPos);
+						if(currentClustor == null) return -1;
+						maxLen = Math.min(currentClustor.length, (int)(bytesPerClustor * clustorList.length - FatFileEntry.super.size));
+						currentPos = 0;
+					}
+					int maxCopyLen = Math.min(len, maxLen - currentPos);
+					System.arraycopy(currentClustor, currentPos, buf, off, maxCopyLen);
+					currentPos += maxCopyLen;
+					if(currentPos >= maxLen){
+						currentClustor = null;
+					}
+					return maxCopyLen;
+				}
+				
+				private byte[] readCluster(int index) throws IOException {
+					if(index >= clustorList.length) return null;
+					int pos = clustorList[index];
+					byte[] buf = new byte[(int)bytesPerClustor];
+					source.readSectors(pos / 512, (int)(bytesPerClustor / 512), buf);
+					return buf;
+				}
+			};
+		}
+		
+	}
+
+	@Override
+	public List<FileEntry> listFiles() {
+		ArrayList<FileEntry> list = new ArrayList<>(files.size());
+		for(FatFile e : files){
+			list.add(new FatFileEntry(e, source, bytesPerClustor));
+		}
+		return list;
 	}
 	
 	private static int[] asRunLengthList(int[] serialList){
@@ -474,7 +550,7 @@ public class FatReader implements Reader {
 		return out;
 	}
 	private static void readDir(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
-			ArrayList<FileEntry> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries) throws IOException {
+			ArrayList<FatFile> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries) throws IOException {
 		byte[] container = new byte[clustors.length * bytesPerClustor];
 		for (int i = 0; i < clustors.length; i++) {
 			source.readSectors((clustors[i] * bytesPerClustor + offsetFix) / 512, bytesPerClustor / 512, container, i * bytesPerClustor);
@@ -484,7 +560,7 @@ public class FatReader implements Reader {
 	}
 	
 	private static void readDirDirect(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
-			ArrayList<FileEntry> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries, byte[] container) throws IOException {
+			ArrayList<FatFile> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries, byte[] container) throws IOException {
 		
 		// System.out.println(Arrays.toString(container));
 		int entrySize = 32;
@@ -641,7 +717,7 @@ public class FatReader implements Reader {
 					
 					System.out.println(Arrays.toString(objCoustors));
 				} else {
-					files.add(new FileEntry(dir, name, time, objCoustors, fileSize));
+					files.add(new FatFile(dir, name, time, objCoustors, fileSize));
 				}
 			}
 		}
@@ -666,17 +742,19 @@ public class FatReader implements Reader {
 
 	}
 
-	public static class FileEntry {//TODO create an universal File interface to make shared props like name, size etc. accessible
+	public static class FatFile {//TODO create an universal File interface to make shared props like name, size etc. accessible
 		public String name;
 		public long age;
 		public int[] clustors;
 		public int fileSize;
-
-		public FileEntry(Dir dir, String fname, long age, int[] clustors, int fileSize) {
+		public String nameOnly;
+		
+		public FatFile(Dir dir, String fname, long age, int[] clustors, int fileSize) {
 			this.age = age;
 			this.clustors = clustors;
 			this.fileSize = fileSize;
 			this.name = dir.path + fname;
+			this.nameOnly = fname;
 		}
 
 		@Override

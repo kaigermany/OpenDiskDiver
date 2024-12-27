@@ -2,21 +2,26 @@ package me.kaigermany.opendiskdiver.data.ntfs;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map.Entry;
 
 import me.kaigermany.opendiskdiver.data.Reader;
+import me.kaigermany.opendiskdiver.datafilesystem.FileEntry;
+import me.kaigermany.opendiskdiver.datafilesystem.FileSystem;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 import me.kaigermany.opendiskdiver.utils.MathUtils;
 
 // https://flatcap.github.io/linux-ntfs/ntfs/concepts/file_record.html
 
-public class NtfsReader implements Reader {
+public class NtfsReader implements Reader, FileSystem {
 	public static final int AttributeType_AttributeData = 0x80;
 	public static final int AttributeType_AttributeAttributeList = 0x20;
 	public static final int ROOTDIRECTORY = 5;
@@ -32,11 +37,37 @@ public class NtfsReader implements Reader {
 		System.out.println(config);
 		NtfsNode[] nodes = readMFT(source);
 		fileMap = convertNodesToFiles(nodes);
-		
+		/*
 		for(String f : fileMap.keySet()){
 			System.out.println(f);
 		}
+		*/
+	}
+	
+	public static class NtfsFileEntry extends FileEntry{
+		private NtfsNode node;
 		
+		public NtfsFileEntry(String nameAndPath, NtfsNode node) {
+			super(node.Name, nameAndPath, node.Size, node.lastEdited);
+		}
+
+		@Override
+		public InputStream openInputStream() {
+			return node.openInputStream();
+		}
+	}
+
+	@Override
+	public List<FileEntry> listFiles() {
+		ArrayList<FileEntry> list = new ArrayList<>(fileMap.size());
+		for(Entry<String, NtfsNode> e : fileMap.entrySet()){
+			NtfsNode n = e.getValue();
+			if(n.isDir){
+				continue;
+			}
+			list.add(new NtfsFileEntry(e.getKey(), n));
+		}
+		return list;
 	}
 	
 	private HashMap<String, NtfsNode> convertNodesToFiles(NtfsNode[] nodes){
