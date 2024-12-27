@@ -3,12 +3,15 @@ package me.kaigermany.opendiskdiver;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 
 import me.kaigermany.opendiskdiver.data.Reader;
 import me.kaigermany.opendiskdiver.data.fat.FatReader;
 import me.kaigermany.opendiskdiver.data.ntfs.NtfsReader;
 import me.kaigermany.opendiskdiver.data.partition.Partition;
 import me.kaigermany.opendiskdiver.data.partition.PartitionReader;
+import me.kaigermany.opendiskdiver.datafilesystem.FileEntry;
+import me.kaigermany.opendiskdiver.datafilesystem.FileSystem;
 import me.kaigermany.opendiskdiver.gui.UI;
 import me.kaigermany.opendiskdiver.gui.UniversalUI;
 import me.kaigermany.opendiskdiver.gui.WindowsUI;
@@ -80,7 +83,7 @@ public class Main {
 				switch (id) {
 					case 0:
 						source = ui.cooseSource();
-						analyzeSource(source);
+						analyzeSource(source, ui);
 						continue;
 					case 1:
 						source = ui.cooseSource();
@@ -151,18 +154,8 @@ public class Main {
 			}
 		}
 		writer.create(outFile, source);
-		byte[] buf = new byte[2 << 20];
-		int maxLen = buf.length / 512;
-		long pos = 0;
-		long maxPos = source.numSectors();
 		
-		while(pos < maxPos){
-			int numSectorsToRead = (int)Math.min(maxPos - pos, maxLen);
-			source.readSectors(pos, numSectorsToRead, buf, 0);
-			writer.write(buf, numSectorsToRead * 512);
-			pos += numSectorsToRead;
-			System.out.println(pos + " / " + maxPos);
-		}
+		ui.getCopyDiskActivityHandler().onCopy(source, writer);
 		
 		writer.close();
 	}
@@ -176,11 +169,43 @@ public class Main {
 		return root.getUsableSpace();
 	}
 	
-	private static void analyzeSource(ReadableSource source) throws IOException {
+	private static ReadableSource selectPartition(ReadableSource diskSource, UI ui) throws IOException {
+		ArrayList<Partition> partitions = new PartitionReader(diskSource).getPartitions();
+		if(partitions.size() == 0){
+			return diskSource;
+		} else if(partitions.size() == 1){
+			return partitions.get(0).source;
+		} else {
+			
+			String[] list = new String[partitions.size()];
+			for(int i=0; i<list.length; i++){
+				Partition p = partitions.get(i);
+				list[i] = "["+p.offset+" .. "+(p.offset+p.len-1)+"   '"+p.name+"']";
+			}
+			String type = partitions.get(0).isGPT ? "GPT" : "MBR";
+			int selected = ui.cooseFromList("Please select a partition: (type: " + type + ")", list);
+			return partitions.get(selected).source;
+			
+		}
+	}
+	
+	private static void analyzeSource(ReadableSource source, UI ui) throws IOException {
 		PartitionReader r = new PartitionReader(source);
 		ArrayList<Partition> partitions = r.getPartitions();
 		System.out.println("found partitions: " + partitions);
+		Reader reader = null;
 		if(partitions.size() > 0){
+			ReadableSource partitionSource = selectPartition(source, ui);
+			byte[] buffer = new byte[512];
+			partitionSource.readSector(0, buffer);
+			ProbeResult result = Probe.detectType(buffer);
+			System.out.println(result);
+			reader = result.getSortedResults().get(0).getReader();
+			if(reader != null) {
+				reader.read(partitionSource);
+			}
+			//TODO select partition by user
+			/*
 			for(Partition p : partitions){
 				System.out.println(p);
 				byte[] buffer = new byte[512];
@@ -193,15 +218,23 @@ public class Main {
 					break;
 				}
 			}
+			*/
 		} else {
 			System.out.println("no partitions found, try direct type detection...");
 			byte[] buffer = new byte[512];
 			source.readSector(0, buffer);
 			ProbeResult result = Probe.detectType(buffer);
 			System.out.println(result);
-			Reader reader = result.getSortedResults().get(0).getReader();
+			reader = result.getSortedResults().get(0).getReader();
 			if(reader != null) {
 				reader.read(source);
+			}
+		}
+		if(reader != null && reader instanceof FileSystem){
+			FileSystem fs = (FileSystem)reader;
+			List<FileEntry> files = fs.listFiles();
+			for(FileEntry f : files){
+				System.out.println(f.nameAndPath);
 			}
 		}
 		/*
