@@ -15,5 +15,8 @@ public interface UI {
 	
 	void close();
 	
+	@Deprecated
 	CopyActivity getCopyDiskActivityHandler();
+	
+	void onDiskCopyStateUpdate(DiskCopyState state);
 }
