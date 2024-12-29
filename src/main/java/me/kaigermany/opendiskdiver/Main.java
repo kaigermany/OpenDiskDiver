@@ -12,6 +12,7 @@ import me.kaigermany.opendiskdiver.data.partition.Partition;
 import me.kaigermany.opendiskdiver.data.partition.PartitionReader;
 import me.kaigermany.opendiskdiver.datafilesystem.FileEntry;
 import me.kaigermany.opendiskdiver.datafilesystem.FileSystem;
+import me.kaigermany.opendiskdiver.gui.DiskCopyState;
 import me.kaigermany.opendiskdiver.gui.UI;
 import me.kaigermany.opendiskdiver.gui.UniversalUI;
 import me.kaigermany.opendiskdiver.gui.WindowsUI;
@@ -155,9 +156,54 @@ public class Main {
 		}
 		writer.create(outFile, source);
 		
-		ui.getCopyDiskActivityHandler().onCopy(source, writer);
+		//ui.getCopyDiskActivityHandler().onCopy(source, writer);
+		copyDisk(source, writer, ui);
 		
 		writer.close();
+	}
+	
+	public static void copyDisk(ReadableSource reader, Writer writer, UI ui) throws IOException {
+		byte[] buf = new byte[1 << 20];
+		int maxLen = buf.length / 512;
+		long pos = 0;
+		long maxPos = reader.numSectors();
+		//long badSectors = 0;
+		
+		DiskCopyState state = new DiskCopyState(maxPos);
+		
+		while(pos < maxPos){
+			int numSectorsToRead = (int)Math.min(maxPos - pos, maxLen);
+			try{
+				
+				reader.readSectors(pos, numSectorsToRead, buf, 0);
+				writer.write(buf, numSectorsToRead * 512);
+				pos += numSectorsToRead;
+
+				state.setCurrentSector(pos);
+				ui.onDiskCopyStateUpdate(state);
+			}catch(IOException blockReadError){
+				//block read failed, try single sector read mode
+				
+				byte[] dummyBuffer = new byte[512];
+				byte[] readBuffer = new byte[512];
+				for(int offset=0; offset<numSectorsToRead; offset++){
+					//onUpdateScreen(pos, maxPos, badSectors);
+					state.setCurrentSector(pos + offset);
+					ui.onDiskCopyStateUpdate(state);
+					try{
+						reader.readSectors(pos + offset, 1, readBuffer, 0);
+						writer.write(readBuffer, 512);
+					}catch(IOException sectorReadError){
+						//badSectors++;
+						state.incrUnreadableSectorCount();
+						writer.write(dummyBuffer, 512);
+					}
+				}
+				pos += numSectorsToRead;
+				
+			}
+			//onUpdateScreen(pos, maxPos, badSectors);
+		}
 	}
 	
 	private static long getFreeSpaceOnDisk(File fileOnDisk){
@@ -233,9 +279,24 @@ public class Main {
 		if(reader != null && reader instanceof FileSystem){
 			FileSystem fs = (FileSystem)reader;
 			List<FileEntry> files = fs.listFiles();
+			StringBuilder sb = new StringBuilder(files.size());
 			for(FileEntry f : files){
-				System.out.println(f.nameAndPath);
+				//System.out.println(f.nameAndPath);
+				//TODO check why there sometimes is f.name == null !
+				if(f.name == null || !f.name.endsWith(".mp4")) continue;
+				sb.append(f.nameAndPath).append("\r\n");
 			}
+			/*
+			 * dump test:
+			try{
+				byte[] a = sb.toString().getBytes("UTF-8");
+				FileOutputStream fos = new FileOutputStream(new File("H:/dump.txt"));
+				fos.write(a);
+				fos.close();
+			}catch(Exception e){
+				e.printStackTrace();
+			}
+			*/
 		}
 		/*
 		if(reader instanceof NtfsReader){
