@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.Comparator;
 
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 
@@ -14,7 +15,18 @@ public class PartitionReader {
 		partitions = readMBR(source);
 		if (partitions.size() == 1 && partitions.get(0).isGPT) {
 			partitions = readGPT(source, partitions.get(0).offset);
+			
+			if(partitions.size() == 0){//assume its damaged/unreadable:
+				partitions = readGPT(source, source.numSectors() - 1);//read backup table
+			}
 		}
+		//theoretically, sorted storage on disk is not required, lets ensure a sorted structure.
+		partitions.sort(new Comparator<Partition>() {
+			@Override
+			public int compare(Partition a, Partition b) {
+				return Long.compare(a.offset, b.offset);
+			}
+		});
 	}
 	
 	public ArrayList<Partition> getPartitions(){
