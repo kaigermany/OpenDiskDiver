@@ -11,9 +11,13 @@ public class DriveInfo {
 	public final long size;
 	
 	public DriveInfo(String name, String path, String size){
+		this(name, path, size.length() == 0 ? -1 : Long.parseLong(size));
+	}
+	
+	public DriveInfo(String name, String path, long size){
 		this.name = name;
 		this.path = path;
-		this.size = size.length() == 0 ? -1 : Long.parseLong(size);
+		this.size = size;
 	}
 	
 	public ReadableSource openReader() throws FileNotFoundException {

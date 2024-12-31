@@ -30,20 +30,25 @@ public class DumpUtils {
 	public static void binaryDump(byte[] in) {
 		int offset = 0;
 		while (true) {
-			System.out.print(hexInt(offset) + " ");
+			System.out.print(hexInt(offset) + ' ');
 			for (int i = 0; i < 16; i++) {
 				int a = offset + i;
 				if (a < in.length)
-					System.out.print(hexByte(in[a]) + " ");
+					System.out.print(hexByte(in[a]) + ' ');
 				else
 					System.out.print("   ");
 			}
 			for (int i = 0; i < 16; i++) {
 				int a = offset + i;
-				if (a < in.length)
-					System.out.print((char) in[a]);
-				else
-					System.out.print(" ");
+				if (a < in.length) {
+					if(in[a] >= 32 && in[a] <= 126){
+						System.out.print((char) in[a]);
+					} else {
+						System.out.print('.');
+					}
+				} else {
+					System.out.print(' ');
+				}
 			}
 			System.out.println();
 			offset += 16;
@@ -57,20 +62,25 @@ public class DumpUtils {
 		StringBuilder sb = new StringBuilder(in.length * 2);
 		int offset = 0;
 		while (true) {
-			sb.append(hexInt(offset) + " ");
+			sb.append(hexInt(offset) + ' ');
 			for (int i = 0; i < 16; i++) {
 				int a = offset + i;
 				if (a < in.length)
-					sb.append(hexByte(in[a]) + " ");
+					sb.append(hexByte(in[a]) + ' ');
 				else
 					sb.append("   ");
 			}
 			for (int i = 0; i < 16; i++) {
 				int a = offset + i;
-				if (a < in.length)
-					sb.append((char) in[a]);
-				else
-					sb.append(" ");
+				if (a < in.length) {
+					if(in[a] >= 32 && in[a] <= 126){
+						sb.append((char) in[a]);
+					} else {
+						sb.append('.');
+					}
+				} else {
+					sb.append(' ');
+				}
 			}
 			sb.append("\r\n");
 			offset += 16;
