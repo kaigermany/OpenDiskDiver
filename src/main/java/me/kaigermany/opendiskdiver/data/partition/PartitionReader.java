@@ -72,10 +72,12 @@ public class PartitionReader {
 		for (int i = 0; i < entryCount; i++) {
 			int off = i * entrySize;
 			long partitionOffset = readNumLong(sector, off + 32);
-			long partitionLen = readNumLong(sector, off + 40) - partitionOffset;
-			if (partitionOffset == 0 && partitionLen == 0) {
+			long partitionEndOffsetIncluding = readNumLong(sector, off + 40);
+			if (partitionOffset == 0 && partitionEndOffsetIncluding == 0) {
 				continue;
 			}
+			System.out.println(partitionEndOffsetIncluding);
+			long partitionLen = partitionEndOffsetIncluding - partitionOffset + 1;
 			char[] nameBuf = new char[72 / 2];
 			ByteBuffer.wrap(sector, off + 56, 72).order(ByteOrder.LITTLE_ENDIAN).asCharBuffer().get(nameBuf);
 			out.add(new Partition(partitionOffset, partitionLen, new String(nameBuf), source));
