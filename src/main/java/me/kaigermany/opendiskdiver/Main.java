@@ -1,8 +1,11 @@
 package me.kaigermany.opendiskdiver;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 
 import me.kaigermany.opendiskdiver.data.Reader;
@@ -236,6 +239,89 @@ public class Main {
 	}
 	
 	private static void analyzeSource(ReadableSource source, UI ui) throws IOException {
+		ArrayList<Partition> partitions = new PartitionReader(source).getPartitions();
+		if(partitions.size() == 0){
+			analyzePartition(source, ui);
+			return;
+		}
+		while(true){
+			switch( ui.cooseFromList("Please select a alayze method:", new String[]{
+					"Select specific partition",
+					"Inspect sectors",
+					"Show partition table details",
+					"Back"
+			}) ){
+				case 0:{
+					ReadableSource partition = selectPartition(source, ui);
+					analyzePartition(partition, ui);
+					break;
+				}
+				case 1: {
+					ui.sectorInspector(source);
+					break;
+				}
+				case 2: {
+					ArrayList<String> text = new ArrayList<>();
+					boolean isGPT = partitions.get(0).isGPT;
+					text.add("Partition Format: " + (isGPT ? "GPT" : "MBR"));
+					text.add("Sectors available: " + source.numSectors());
+					{
+						long usedSectors = 1 + (isGPT ? 33*2 : 0);
+						for(Partition p : partitions){
+							usedSectors += p.len;
+						}
+						text.add("Sectors used: " + usedSectors);
+						text.add("Sectors free: " + (source.numSectors() - usedSectors));
+					}
+					text.add("##### Disk Layout: #####");
+					text.add("offset, size, type");
+					if(isGPT){
+						text.add("0   +1   Protective MBR Partition Table");
+						text.add("1   +33  GPT Partition Table");
+					} else {
+						text.add("0   +1   MBR Partition Table");
+					}
+					long pos = isGPT ? 34 : 1;
+					long endPos = source.numSectors() - (isGPT ? 33 : 0);
+					Iterator<Partition> it = partitions.iterator();
+					Partition nextPartition = it.next();
+					int partitionIndex = 0;
+					while(pos < endPos){
+						long nextPartitionOffset = nextPartition != null ? nextPartition.offset : endPos;
+						if(pos != nextPartitionOffset){
+							long len = nextPartitionOffset - pos;
+							text.add(pos + "   +" + len + "   [Free Space]");
+							pos = nextPartitionOffset;
+							continue;
+						}
+						System.out.println(nextPartition);
+						partitionIndex++;
+						text.add(nextPartition.offset + "   +" + nextPartition.len + "   Partition " + partitionIndex);
+						pos = nextPartition.offset + nextPartition.len;
+						nextPartition = it.hasNext() ? it.next() : null;
+					}
+					if(isGPT){
+						text.add(endPos + "   +33   GPT Backup Table");
+					}
+					//text.add("findLastValidSector() -> " + findLastValidSector(source));
+					ui.showInfo(text.toArray(new String[text.size()]));
+					break;
+				}
+				case 3:{
+					return;
+				}
+			}
+		}
+	}
+	
+	
+
+	private static void analyzePartition(ReadableSource source, UI ui) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	private static void listFilesFromSource(ReadableSource source, UI ui) throws IOException {
 		PartitionReader r = new PartitionReader(source);
 		ArrayList<Partition> partitions = r.getPartitions();
 		System.out.println("found partitions: " + partitions);
@@ -280,14 +366,29 @@ public class Main {
 			FileSystem fs = (FileSystem)reader;
 			List<FileEntry> files = fs.listFiles();
 			StringBuilder sb = new StringBuilder(files.size());
+			ArrayList<String> arr = new ArrayList<>(files.size());
 			for(FileEntry f : files){
 				//System.out.println(f.nameAndPath);
 				//TODO check why there sometimes is f.name == null !
-				if(f.name == null || !f.name.endsWith(".mp4")) continue;
-				sb.append(f.nameAndPath).append("\r\n");
+				if(f.name == null) continue;
+				arr.add(f.nameAndPath);
 			}
-			/*
-			 * dump test:
+			arr.sort(new Comparator<String>() {
+				@Override
+				public int compare(String o1, String o2) {
+					int l = Math.min(o1.length(), o2.length());
+					for(int i=0; i<l; i++){
+						char c1 = o1.charAt(i);
+						char c2 = o2.charAt(i);
+						if(c1 != c2) return Character.compare(c1, c2);
+					}
+					return Integer.compare(o1.length(), o2.length());
+				}
+			});
+			for(String s : arr){
+				sb.append(s).append("\r\n");
+			}
+			// dump test:
 			try{
 				byte[] a = sb.toString().getBytes("UTF-8");
 				FileOutputStream fos = new FileOutputStream(new File("H:/dump.txt"));
@@ -296,7 +397,6 @@ public class Main {
 			}catch(Exception e){
 				e.printStackTrace();
 			}
-			*/
 		}
 		/*
 		if(reader instanceof NtfsReader){
