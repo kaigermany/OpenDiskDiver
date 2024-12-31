@@ -15,4 +15,8 @@ public interface UI {
 	void close();
 	
 	void onDiskCopyStateUpdate(DiskCopyState state);
+
+	void showInfo(String[] text);
+	
+	void sectorInspector(ReadableSource source);
 }

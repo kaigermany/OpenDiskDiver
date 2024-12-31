@@ -12,6 +12,7 @@ import me.kaigermany.opendiskdiver.data.DriveInfo;
 import me.kaigermany.opendiskdiver.reader.ImageFileReader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.reader.ZipFileReader;
+import me.kaigermany.opendiskdiver.utils.DumpUtils;
 import me.kaigermany.opendiskdiver.utils.SharedText;
 import me.kaigermany.opendiskdiver.utils.Utils;
 
@@ -114,7 +115,7 @@ public class UniversalUI implements UI {
 		}
 	}
 	
-	private String readNextLine(InputStream is) {
+	private static String readNextLine(InputStream is) {
 		try{
 			ByteArrayOutputStream baos = new ByteArrayOutputStream();
 			int chr;
@@ -135,6 +136,47 @@ public class UniversalUI implements UI {
 			System.out.println("[Type 'pause' to continue copy process]");
 		} else {
 			System.out.println("[Type 'pause' to pause copy process]");
+		}
+	}
+
+	@Override
+	public void showInfo(String[] text) {
+		int maxWidth = 0;
+		for(String s : text) maxWidth = Math.max(maxWidth, s.length());
+		System.out.print('+');
+		for(int i=0; i<maxWidth; i++) System.out.print('-');
+		System.out.println('+');
+		for(String s : text) System.out.println("|" + s + "|");
+		System.out.print('+');
+		for(int i=0; i<maxWidth; i++) System.out.print('-');
+		System.out.println('+');
+	}
+	
+	@Override
+	public void sectorInspector(ReadableSource source) {
+		long numSectors = source.numSectors();
+		byte[] buffer = new byte[512];
+		while(true){
+			System.out.println("Please enter a sector number between 0 and " + numSectors + " or any negaitve number to exit.");
+			long sectorTarget;
+			String line = UniversalUI.readNextLine(System.in).trim();
+			try{
+				if(line.charAt(0) == '-') return;
+				sectorTarget = Long.parseLong(line);
+			}catch(Exception ignored){
+				continue;
+			}
+			
+			if(sectorTarget >= numSectors) continue;
+			
+			try{
+				source.readSector(sectorTarget, buffer);
+				System.out.println("Sector #" + sectorTarget + ":");
+				DumpUtils.binaryDump(buffer);
+				System.out.println();
+			}catch(Exception e){
+				e.printStackTrace();
+			}
 		}
 	}
 }

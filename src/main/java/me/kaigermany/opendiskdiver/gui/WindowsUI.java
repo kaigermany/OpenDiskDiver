@@ -9,6 +9,7 @@ import me.kaigermany.opendiskdiver.data.DriveInfo;
 import me.kaigermany.opendiskdiver.reader.ImageFileReader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.reader.ZipFileReader;
+import me.kaigermany.opendiskdiver.utils.DumpUtils;
 import me.kaigermany.opendiskdiver.utils.OpenFileDialog;
 import me.kaigermany.opendiskdiver.utils.SharedText;
 import me.kaigermany.opendiskdiver.utils.Utils;
@@ -202,5 +203,91 @@ public class WindowsUI implements UI {
 			screen.write("[Type 'p' to pause copy process]", 0, 3, Screen.WHITE, Screen.DARKMAGENTA);
 		}
 		screen.printText();
+	}
+
+	@Override
+	public void showInfo(String[] text) {
+		String lastLineText = "Press any key to return.";
+		int maxWidth = lastLineText.length();
+		for(String s : text) maxWidth = Math.max(maxWidth, s.length());
+		screen.resize(maxWidth + 2, text.length + 3);
+
+		screen.writeChar('+', 0, 0, Screen.WHITE, Screen.BLACK);
+		screen.writeChar('+', maxWidth + 1, 0, Screen.WHITE, Screen.BLACK);
+		for(int i=0; i<maxWidth; i++) screen.writeChar('-', i + 1, 0, Screen.WHITE, Screen.BLACK);
+		screen.writeChar('+', 0, text.length + 1, Screen.WHITE, Screen.BLACK);
+		screen.writeChar('+', maxWidth + 1, text.length + 1, Screen.WHITE, Screen.BLACK);
+		for(int i=0; i<maxWidth; i++) screen.writeChar('-', i + 1, text.length + 1, Screen.WHITE, Screen.BLACK);
+		for(int i=0; i<text.length; i++) {
+			screen.writeChar('|', 0, i + 1, Screen.WHITE, Screen.BLACK);
+			screen.writeChar('|', maxWidth + 1, i + 1, Screen.WHITE, Screen.BLACK);
+			screen.write(text[i], 1, i + 1, Screen.WHITE, Screen.BLACK);
+		}
+		screen.write(lastLineText, 0, text.length + 2, Screen.WHITE, Screen.BLACK);
+		screen.printText();
+		ci.readKey();
+	}
+	
+	@Override
+	public void sectorInspector(ReadableSource source) {
+		long lastSector = 0;
+		byte[] buffer = new byte[512];
+		try{
+			source.readSector(lastSector, buffer);
+		}catch(Exception e){
+			e.printStackTrace();
+		}
+		String[] lastBinDump = DumpUtils.binaryDumpToString(buffer).split("\r\n");
+		final long numSectors = source.numSectors();
+		StringBuilder numberInputBuffer = new StringBuilder(16);
+		while(true){
+			ArrayList<String> text = new ArrayList<>();
+			text.add("Enter a sector number between 0 and " + numSectors + " : " + numberInputBuffer + "_");
+			text.add("Use Arrow keys to navigate or press ESC to return.");
+			text.add("Sector #" + lastSector + ":");
+			for(String s : lastBinDump) text.add(s);
+			
+			int maxWidth = 0;
+			for(String s : text) maxWidth = Math.max(maxWidth, s.length());
+			screen.resize(maxWidth, text.size());
+			for(int i=0; i<text.size(); i++) {
+				screen.write(text.get(i), 0, i, Screen.WHITE, Screen.BLACK);
+			}
+			screen.printText();
+			
+			long sector = lastSector;
+			Pair<Integer, String> key = ci.readKey();
+			if(key.getFirst() == 27){//ESC
+				return;
+			} else if(key.getSecond().equals("RightArrow") || key.getSecond().equals("DownArrow")){
+				sector = lastSector + 1;
+			} else if(key.getSecond().equals("LeftArrow") || key.getSecond().equals("UpArrow")){
+				sector = lastSector - 1;
+			} else if(key.getFirst() >= '0' && key.getFirst() <= '9'){
+				char chr = (char)key.getFirst().intValue();
+				numberInputBuffer.append(chr);
+			} else if(key.getFirst() == 8){//Backspace
+				numberInputBuffer.deleteCharAt(numberInputBuffer.length() - 1);
+			} else if(key.getFirst() == 13){//Enter
+				String numText = numberInputBuffer.toString();
+				numberInputBuffer.setLength(0);
+				try{
+					sector = Long.parseLong(numText);
+				}catch(Exception e){
+					e.printStackTrace();
+				}
+			}
+			
+			if(sector >= 0 && sector < numSectors && sector != lastSector){
+				lastSector = sector;
+				try{
+					source.readSector(lastSector, buffer);
+				}catch(Exception e){
+					e.printStackTrace();
+				}
+				lastBinDump = DumpUtils.binaryDumpToString(buffer).split("\r\n");
+				
+			}
+		}
 	}
 }
