@@ -11,7 +11,7 @@ public class Partition {
 	public final ReadableSource source;
 	
 	public Partition(int offset, int len, int type, ReadableSource source) {
-		isGPT = type == 238 && len == -1;
+		isGPT = type == 238 && len < 0;
 		this.offset = offset;
 		this.len = len;
 		this.type = type;
