@@ -103,6 +103,11 @@ public class FatReader implements Reader, FileSystem {
 		int BytesPerSector;// == local sector size.
 		int SectorsPerCluster;
 		
+		long dataOffset;
+		int ClusterHeapOffset;
+		int ClusterCount;
+		int FirstClusterOfRootDirectory;
+		
 		public ExFAT_BootSector(byte[] bootSector) throws IOException {
 			int BytesPerSectorShift = bootSector[108] & 0xFF; //allowed is 9 (512) .. 12 (4096) ONLY.
 			BytesPerSector = 1 << BytesPerSectorShift;
@@ -112,6 +117,12 @@ public class FatReader implements Reader, FileSystem {
 			VolumeLength = readLittleEndian(bootSector, 72, 8);
 			FatOffset = (int) readLittleEndian(bootSector, 80, 4);
 			FatLength = (int) readLittleEndian(bootSector, 84, 4);
+			
+			dataOffset = FatOffset + FatLength * NumberOfFats;
+			
+			ClusterHeapOffset = (int) readLittleEndian(bootSector, 88, 4);
+			ClusterCount = (int) readLittleEndian(bootSector, 92, 4);
+			FirstClusterOfRootDirectory = (int) readLittleEndian(bootSector, 96, 4);
 		}
 	}
 	public static class FAT_BootSector{
@@ -227,6 +238,38 @@ public class FatReader implements Reader, FileSystem {
 		
 		boolean isExFat = isExFat(bootSector);
 		System.out.println("isExFat: " + isExFat);
+		
+		if(isExFat){
+			ExFAT_BootSector bootSectorContainer_exFat = new ExFAT_BootSector(bootSector);
+			System.out.println("VolumeLength = " + bootSectorContainer_exFat.VolumeLength);
+			System.out.println("FatOffset = " + bootSectorContainer_exFat.FatOffset);
+			System.out.println("FatLength = " + bootSectorContainer_exFat.FatLength);
+			System.out.println("NumberOfFats = " + bootSectorContainer_exFat.NumberOfFats);
+			System.out.println("BytesPerSector = " + bootSectorContainer_exFat.BytesPerSector);
+			System.out.println("SectorsPerCluster = " + bootSectorContainer_exFat.SectorsPerCluster);
+			
+			System.out.println("ClusterHeapOffset = " + bootSectorContainer_exFat.ClusterHeapOffset);
+			System.out.println("ClusterCount = " + bootSectorContainer_exFat.ClusterCount);
+			System.out.println("FirstClusterOfRootDirectory = " + bootSectorContainer_exFat.FirstClusterOfRootDirectory);
+			long rootDirFirstSector = bootSectorContainer_exFat.ClusterHeapOffset 
+					+ bootSectorContainer_exFat.SectorsPerCluster * (bootSectorContainer_exFat.FirstClusterOfRootDirectory - 2);
+			System.out.println("rootDirFirstSecotr = " + rootDirFirstSector);
+			byte[] rootDirSector = new byte[512];
+			source.readSector(rootDirFirstSector, rootDirSector);
+			for(int off=0; off<512; off+=32){
+				int EntryType = rootDirSector[off + 0] & 0xFF;
+				int FirstCluster = (int) readLittleEndian(bootSector, 20, 4);
+				int DataLength = (int) readLittleEndian(bootSector, 24, 4);
+				System.out.println("EntryType="+EntryType);
+				System.out.println("FirstCluster="+FirstCluster);
+				System.out.println("DataLength="+DataLength);
+				if(EntryType == 0) break;
+				EntryType &= (1 << 5) - 1;//filter for TypeCode
+				//https://en.wikipedia.org/wiki/ExFAT
+				//https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification
+			}
+		}
+		
 		
 		FAT_BootSector bootSectorContainer = new FAT_BootSector(bootSector);
 		this.type = bootSectorContainer.type;
