@@ -83,7 +83,7 @@ public class Main {
 					"Exit"
 			});
 			try{
-				ReadableSource source = null;
+				ReadableSource source;
 				switch (id) {
 					case 0:
 						source = ui.cooseSource();
@@ -95,6 +95,7 @@ public class Main {
 						continue;
 					case 2:
 						source = ui.cooseSource();
+						//TODO
 						continue;
 					case 3:
 						ui.close();
@@ -245,7 +246,7 @@ public class Main {
 			return;
 		}
 		while(true){
-			switch( ui.cooseFromList("Please select a alayze method:", new String[]{
+			switch( ui.cooseFromList("Please select a analyze method:", new String[]{
 					"Select specific partition",
 					"Inspect sectors",
 					"Show partition table details",
