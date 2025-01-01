@@ -242,7 +242,7 @@ public class WindowsUI implements UI {
 		StringBuilder numberInputBuffer = new StringBuilder(16);
 		while(true){
 			ArrayList<String> text = new ArrayList<>();
-			text.add("Enter a sector number between 0 and " + numSectors + " : " + numberInputBuffer + "_");
+			text.add("Enter a sector number between 0 and " + (numSectors - 1) + " : " + numberInputBuffer + "_");
 			text.add("Use Arrow keys to navigate or press ESC to return.");
 			text.add("Sector #" + lastSector + ":");
 			for(String s : lastBinDump) text.add(s);

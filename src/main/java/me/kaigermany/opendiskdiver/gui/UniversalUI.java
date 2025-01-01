@@ -157,7 +157,7 @@ public class UniversalUI implements UI {
 		long numSectors = source.numSectors();
 		byte[] buffer = new byte[512];
 		while(true){
-			System.out.println("Please enter a sector number between 0 and " + numSectors + " or any negaitve number to exit.");
+			System.out.println("Please enter a sector number between 0 and " + (numSectors - 1) + " or any negaitve number to exit.");
 			long sectorTarget;
 			String line = UniversalUI.readNextLine(System.in).trim();
 			try{
