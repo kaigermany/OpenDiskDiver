@@ -2,6 +2,8 @@ package me.kaigermany.opendiskdiver.data.fat;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -14,6 +16,7 @@ import me.kaigermany.opendiskdiver.datafilesystem.FileEntry;
 import me.kaigermany.opendiskdiver.datafilesystem.FileSystem;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
+import me.kaigermany.opendiskdiver.utils.DumpUtils;
 
 public class FatReader implements Reader, FileSystem {
 	private static final byte[] EXFAT_SIGNATURE = "EXFAT   ".getBytes();
@@ -125,6 +128,176 @@ public class FatReader implements Reader, FileSystem {
 			FirstClusterOfRootDirectory = (int) readLittleEndian(bootSector, 96, 4);
 		}
 	}
+	
+	public static class ExFatRawFile{
+		public static ExFatRawFile parse(byte[] buf, int off){
+			int firstCluster = (int) readLittleEndian(buf, off + 20, 4);
+			long dataLength = readLittleEndian(buf, off + 24, 8);
+			return new ExFatRawFile(firstCluster, dataLength);
+		}
+		
+		public final int firstCluster;
+		public final long numBytes;
+		
+		public ExFatRawFile(int firstCluster, long fileSizeInBytes){
+			this.firstCluster = firstCluster;
+			this.numBytes = fileSizeInBytes;
+		}
+	}
+	
+	public static class ExFatEntryObject{
+		public static ExFatEntryObject parse(byte[] buf, int off){
+			int attributeFlags = (int) readLittleEndian(buf, off + 4, 4);
+			long timeCreated = parseTime((int)readLittleEndian(buf, off + 8, 4), buf[off + 20] & 0xFF);
+			long timeModified = parseTime((int)readLittleEndian(buf, off + 12, 4), buf[off + 21] & 0xFF);
+			long timeAccessed = parseTime((int)readLittleEndian(buf, off + 16, 4), buf[off + 22] & 0xFF);
+			int numFollowupEntries = buf[off + 1] & 0xFF;
+			boolean ATTR_READ_ONLY = (attributeFlags & 1) != 0;
+			boolean ATTR_HIDDEN = (attributeFlags & 2) != 0;
+			boolean ATTR_SYSTEM = (attributeFlags & 4) != 0;
+			boolean ATTR_DIRECTORY = (attributeFlags & 16) != 0;
+			System.out.println("ATTR_DIRECTORY = " + ATTR_DIRECTORY);
+			return new ExFatEntryObject(numFollowupEntries, ATTR_DIRECTORY);
+		}
+		private static long parseTime(int timeBits, int extra10ms){
+			Calendar cal = Calendar.getInstance();
+			cal.set(14, 0);
+			cal.set(13, (timeBits & 0x1F) * 2);
+			cal.set(12, (timeBits >> 5) & 0x3F);
+			cal.set(11, (timeBits >> 11) & 0x1F);
+			cal.set(5, (timeBits >> 16) & 0x1F);
+			cal.set(2, (timeBits >> 21 & 0xF) - 1);
+			cal.set(1, 1980 + ((timeBits >> 25) & 0x7F));
+			return cal.getTimeInMillis() + (extra10ms * 10);
+		}
+		
+		public int numFollowupEntries;
+		public boolean isDir;
+		
+		public ExFatStreamExtension streamInfo;
+		
+		public ExFatEntryObject(int numFollowupEntries, boolean isDir){
+			this.numFollowupEntries = numFollowupEntries;
+			this.isDir = isDir;
+		}
+		
+	}
+	
+	public static class ExFatStreamExtensionBuilder{
+		final int fileNameLen;
+		final char[] fileName;
+		int fileNameWritePtr;
+		
+		final long validDataLen;//confirmed number of bytes written on disk. might be less then the declaration of dataLen.
+		final long firstCluster;
+		final long dataLen;
+		
+		public ExFatStreamExtensionBuilder(byte[] buf, int off){
+			this.fileNameLen = buf[off + 3] & 0xFF;
+			this.fileName = new char[this.fileNameLen];
+			this.fileNameWritePtr = 0;
+
+			this.validDataLen = readLittleEndian(buf, off + 8, 8);
+			this.firstCluster = readLittleEndian(buf, off + 20, 4);
+			this.dataLen = readLittleEndian(buf, off + 24, 8);
+		}
+		public boolean putNextNameEntry(byte[] buf, int off){
+			int charsToRead = Math.min(fileNameLen - fileNameWritePtr, 15);
+			ByteBuffer.wrap(buf, off + 2, 30).order(ByteOrder.LITTLE_ENDIAN).asCharBuffer().get(fileName, fileNameWritePtr, charsToRead);
+			/*
+			byte[] a = new byte[30];
+			ByteBuffer.wrap(buf, 2, 30).get(a);
+			System.out.println(DumpUtils.binaryDumpToString(a));
+			*/
+			fileNameWritePtr += charsToRead;
+			System.out.println("\t\t\tfileNameWritePtr="+fileNameWritePtr + ", fileNameLen="+fileNameLen);
+			return fileNameWritePtr == fileNameLen;
+		}
+		public ExFatStreamExtension build(){
+			return new ExFatStreamExtension(validDataLen, firstCluster, dataLen, new String(fileName));
+		}
+	}
+	
+	public static class ExFatStreamExtension{
+		final long validDataLen;
+		final long firstCluster;
+		final long dataLen;
+		final String name;
+		
+		public ExFatStreamExtension(long validDataLen, long firstCluster, long dataLen, String name) {
+			this.validDataLen = validDataLen;
+			this.firstCluster = firstCluster;
+			this.dataLen = dataLen;
+			this.name = name;
+		}
+	}
+	
+	public void readDirExFat(int[] fat, byte[] dirContents, String path, HashMap<String, ExFatEntryObject> filesOut
+			, int clusterSize, int clusterHeapOffset) throws IOException {
+		
+		ExFatStreamExtensionBuilder currentStreamBuilder = null;
+		ExFatEntryObject currentObject = null;
+		for(int off=0; off<dirContents.length; off+=32){
+			int EntryType = dirContents[off + 0] & 0xFF;
+			//System.out.println("EntryType -> " + EntryType);
+			if(EntryType == 133){//directory
+				currentObject = ExFatEntryObject.parse(dirContents, off);
+				System.out.println("numFollowupEntries: " + currentObject.numFollowupEntries);
+			} else if(EntryType == 192){//stream entry
+				currentStreamBuilder = new ExFatStreamExtensionBuilder(dirContents, off);
+			} else if(EntryType == 193){//stream-name extension entry
+				if(currentStreamBuilder != null){
+					if(currentStreamBuilder.putNextNameEntry(dirContents, off)){
+						ExFatStreamExtension extend = currentStreamBuilder.build();
+						System.out.println("extend.name = '" + extend.name + "'");
+						currentStreamBuilder = null;
+						currentObject.streamInfo = extend;
+						String fullName = path + "/" + extend.name;
+						filesOut.put(fullName, currentObject);
+						
+						if(currentObject.isDir) readDirExFat(fat, currentObject, fullName, filesOut, clusterSize, clusterHeapOffset);
+						
+						currentObject = null;
+					}
+				}
+			}
+		}
+	}
+	
+	public void readDirExFat(int[] fat, ExFatEntryObject rootDir, String path, HashMap<String, ExFatEntryObject> filesOut
+			, int clusterSize, int clusterHeapOffset) throws IOException {
+		byte[] dirContents = readFullFile(rootDir, fat, clusterSize, clusterHeapOffset);
+		readDirExFat(fat, dirContents, path, filesOut, clusterSize, clusterHeapOffset);
+	}
+	
+	byte[] readFullFile(ExFatEntryObject file, int[] fat, int clusterSize, int clusterHeapOffset) throws IOException {
+		int cluster = (int)file.streamInfo.firstCluster;
+		byte[] clusterBuffer = new byte[clusterSize * 512];
+		byte[] out = new byte[(int)file.streamInfo.validDataLen];
+		int wp = 0;
+		while(cluster != -1){
+			if(wp == out.length){
+				System.err.println("leaved befor reching last cluster!");
+				break;
+			}
+			System.out.println("cluster = " + cluster);
+			System.out.println("location = " + cluster);
+			{
+				byte[] dump = new byte[512];
+				source.readSector(clusterHeapOffset + ((cluster) * (long)clusterSize), dump);
+				System.out.println(DumpUtils.binaryDumpToString(dump));
+			}
+			source.readSectors(clusterHeapOffset + ((cluster) * (long)clusterSize), clusterSize, clusterBuffer);
+			cluster = fat[cluster];
+			int len = Math.min(out.length - wp, clusterBuffer.length);
+			System.out.println("len="+len);
+			System.out.println("out.length="+out.length);
+			System.arraycopy(clusterBuffer, 0, out, wp, len);
+			wp += len;
+		}
+		return out;
+	}
+	
 	public static class FAT_BootSector{
 		public int rootClustorNumber;
 		public int bytes_per_sector;
@@ -240,6 +413,9 @@ public class FatReader implements Reader, FileSystem {
 		System.out.println("isExFat: " + isExFat);
 		
 		if(isExFat){
+			// https://en.wikipedia.org/wiki/ExFAT
+			// https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification
+			// https://events.static.linuxfound.org/images/stories/pdf/lceu11_munegowda_s.pdf
 			ExFAT_BootSector bootSectorContainer_exFat = new ExFAT_BootSector(bootSector);
 			System.out.println("VolumeLength = " + bootSectorContainer_exFat.VolumeLength);
 			System.out.println("FatOffset = " + bootSectorContainer_exFat.FatOffset);
@@ -251,23 +427,112 @@ public class FatReader implements Reader, FileSystem {
 			System.out.println("ClusterHeapOffset = " + bootSectorContainer_exFat.ClusterHeapOffset);
 			System.out.println("ClusterCount = " + bootSectorContainer_exFat.ClusterCount);
 			System.out.println("FirstClusterOfRootDirectory = " + bootSectorContainer_exFat.FirstClusterOfRootDirectory);
+			
+			if(bootSectorContainer_exFat.BytesPerSector != 512){
+				int scaler = bootSectorContainer_exFat.BytesPerSector / 512;
+				bootSectorContainer_exFat.BytesPerSector = 512;
+				bootSectorContainer_exFat.SectorsPerCluster *= scaler;
+				
+			}
+			
+			bootSectorContainer_exFat.ClusterHeapOffset -= bootSectorContainer_exFat.SectorsPerCluster * 2;
+			
 			long rootDirFirstSector = bootSectorContainer_exFat.ClusterHeapOffset 
-					+ bootSectorContainer_exFat.SectorsPerCluster * (bootSectorContainer_exFat.FirstClusterOfRootDirectory - 2);
+					+ bootSectorContainer_exFat.SectorsPerCluster * (long)bootSectorContainer_exFat.FirstClusterOfRootDirectory;
 			System.out.println("rootDirFirstSecotr = " + rootDirFirstSector);
-			byte[] rootDirSector = new byte[512];
-			source.readSector(rootDirFirstSector, rootDirSector);
+			
+			byte[] rootDirSector = new byte[512 * bootSectorContainer_exFat.SectorsPerCluster];
+			String volumeTitle = null;
+			ExFatRawFile bitmapFile = null;
+			ExFatRawFile UpCaseTableFile = null;
+			ExFatStreamExtensionBuilder currentStreamBuilder = null;
+			
+			ExFatEntryObject rootDirEntry = null;
+			
+			HashMap<String, ExFatEntryObject> files = new HashMap<>();
+			
+			//boolean doBreak = false;
+			//while(!doBreak){
+			
+			source.readSectors(rootDirFirstSector, bootSectorContainer_exFat.SectorsPerCluster, rootDirSector);
+			System.out.println(DumpUtils.binaryDumpToString(rootDirSector));
+			
+			
 			for(int off=0; off<512; off+=32){
 				int EntryType = rootDirSector[off + 0] & 0xFF;
-				int FirstCluster = (int) readLittleEndian(bootSector, 20, 4);
-				int DataLength = (int) readLittleEndian(bootSector, 24, 4);
-				System.out.println("EntryType="+EntryType);
-				System.out.println("FirstCluster="+FirstCluster);
-				System.out.println("DataLength="+DataLength);
-				if(EntryType == 0) break;
-				EntryType &= (1 << 5) - 1;//filter for TypeCode
-				//https://en.wikipedia.org/wiki/ExFAT
-				//https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification
+				int FirstCluster = (int) readLittleEndian(rootDirSector, off + 20, 4);
+				long DataLength = readLittleEndian(rootDirSector, off + 24, 8);
+				//System.out.println("EntryType="+EntryType);
+				//System.out.println("FirstCluster="+FirstCluster);
+				//System.out.println("DataLength="+DataLength);
+				if(EntryType == 131){//volume title
+					int len = rootDirSector[off + 1];
+					char[] chars = new char[11];
+					ByteBuffer.wrap(rootDirSector, off + 2, 22).order(ByteOrder.LITTLE_ENDIAN).asCharBuffer().get(chars);
+					volumeTitle = new String(chars, 0, len);
+				} else if(EntryType == 3){//no volume title
+					volumeTitle = "";
+				} else if(EntryType == 129){
+					bitmapFile = ExFatRawFile.parse(rootDirSector, off);
+				} else if(EntryType == 130){
+					UpCaseTableFile = ExFatRawFile.parse(rootDirSector, off);
+				} else if(EntryType == 133){//directory
+					rootDirEntry = ExFatEntryObject.parse(rootDirSector, off);
+					System.out.println("numFollowupEntries: " + rootDirEntry.numFollowupEntries);
+				} else if(EntryType == 192){//stream entry
+					currentStreamBuilder = new ExFatStreamExtensionBuilder(rootDirSector, off);
+				} else if(EntryType == 193){//stream-name extension entry
+					if(currentStreamBuilder != null){
+						if(currentStreamBuilder.putNextNameEntry(rootDirSector, off)){
+							ExFatStreamExtension extend = currentStreamBuilder.build();
+							System.out.println("extend.name = '" + extend.name + "'");
+							currentStreamBuilder = null;
+							rootDirEntry.streamInfo = extend;
+							files.put("/" + extend.name, rootDirEntry);
+							rootDirEntry = null;
+							break;
+						}
+					}
+				} else if(EntryType == 0){
+					//doBreak = true;
+					System.out.println("doBreak = true;");
+					break;
+				}
 			}
+			rootDirFirstSector++;
+			System.out.println("rootDirFirstSector = " + rootDirFirstSector);
+			//}
+			
+			long len = (long)bootSectorContainer_exFat.FatLength * (bootSectorContainer_exFat.BytesPerSector / 512);
+			byte[] fatBuffer = new byte[4 << 20];
+			//final int fatWriteStep = 1 << 20;
+			//final int fatBufferInSectors = fatBuffer.length / 512;
+			fats = new int[bootSectorContainer_exFat.NumberOfFats][];
+			final int sectorToIntScaler = 512 / 4;
+			for(int fatIndex=0; fatIndex<bootSectorContainer_exFat.NumberOfFats; fatIndex++){
+				int[] fatPage = new int[bootSectorContainer_exFat.FatLength * (bootSectorContainer_exFat.BytesPerSector / 4)];
+				long rp = 0;
+				long diskOffset = bootSectorContainer_exFat.FatOffset + ((long)bootSectorContainer_exFat.FatLength * fatIndex);
+				while(rp < len){
+					int sectorsToRead = (int)Math.min(fatBuffer.length/512, len - rp);
+					source.readSectors(diskOffset + rp,
+							sectorsToRead, fatBuffer);
+					ByteBuffer.wrap(fatBuffer)
+						.order(ByteOrder.LITTLE_ENDIAN)
+						.asIntBuffer()
+						.get(fatPage, (int)(rp * sectorToIntScaler), sectorsToRead * sectorToIntScaler);
+					rp += sectorsToRead;
+				}
+				fats[fatIndex] = fatPage;
+				//fats[i] = readFAT(bootSectorContainer.clusterCount, source, getEntrySize, offset, bootSectorContainer.fatSz * bootSectorContainer.bytes_per_sector);
+			}
+			
+			readDirExFat(fats[0], rootDirSector, "", files, bootSectorContainer_exFat.SectorsPerCluster, bootSectorContainer_exFat.ClusterHeapOffset);
+
+			
+			//readDirExFat(fats[0], rootDirEntry, "", files, bootSectorContainer_exFat.SectorsPerCluster, bootSectorContainer_exFat.ClusterHeapOffset);
+			System.out.println(files.keySet());
+			return;
 		}
 		
 		
