@@ -40,4 +40,12 @@ public class ByteArrayUtils {
 		}
 		return true;
 	}
+	
+	public static long readLittleEndian(byte[] a, int offset, int len) {
+		long b = 0;
+		for (int i = 0; i < len; i++) {
+			b |= (a[offset + i] & 0xFF) << (i << 3);
+		}
+		return b;
+	}
 }
