@@ -14,7 +14,7 @@ public class ExFAT_BootSector {
 	public final int SectorsPerCluster;
 	
 	public final long dataOffset;
-	public final int ClusterHeapOffset;
+	public final long ClusterHeapOffset;
 	public final int ClusterCount;
 	public final int FirstClusterOfRootDirectory;
 	
@@ -28,7 +28,7 @@ public class ExFAT_BootSector {
 		int fatOffsetTemp = (int) ByteArrayUtils.readLittleEndian(bootSector, 80, 4);
 		int fatLengthTemp = (int) ByteArrayUtils.readLittleEndian(bootSector, 84, 4);
 		
-		int clusterHeapOffsetTemp = (int) ByteArrayUtils.readLittleEndian(bootSector, 88, 4);
+		long clusterHeapOffsetTemp = ByteArrayUtils.readLittleEndian(bootSector, 88, 4);
 		ClusterCount = (int) ByteArrayUtils.readLittleEndian(bootSector, 92, 4);
 		FirstClusterOfRootDirectory = (int) ByteArrayUtils.readLittleEndian(bootSector, 96, 4);
 		
@@ -39,6 +39,8 @@ public class ExFAT_BootSector {
 			fatOffsetTemp *= scaler;
 			fatLengthTemp *= scaler;
 		}
+		
+		System.out.println("clusterHeapOffsetTemp: " + clusterHeapOffsetTemp);
 		
 		dataOffset = fatOffsetTemp + fatLengthTemp * NumberOfFats;
 		BytesPerSector = bytesPerSectorTemp;
