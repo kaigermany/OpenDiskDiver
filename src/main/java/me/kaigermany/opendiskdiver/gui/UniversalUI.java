@@ -6,13 +6,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.function.Function;
 
 import me.kaigermany.opendiskdiver.DriveListProvider;
 import me.kaigermany.opendiskdiver.data.DriveInfo;
 import me.kaigermany.opendiskdiver.reader.ImageFileReader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.reader.ZipFileReader;
-import me.kaigermany.opendiskdiver.utils.DumpUtils;
 import me.kaigermany.opendiskdiver.utils.SharedText;
 import me.kaigermany.opendiskdiver.utils.Utils;
 
@@ -153,30 +153,25 @@ public class UniversalUI implements UI {
 	}
 	
 	@Override
-	public void sectorInspector(ReadableSource source) {
-		long numSectors = source.numSectors();
-		byte[] buffer = new byte[512];
+	//public void sectorInspector(ReadableSource source) {
+	public void pagedTextViewer(long numPages, Function<Long, String[]> textRequestCallback){
 		while(true){
-			System.out.println("Please enter a sector number between 0 and " + (numSectors - 1) + " or any negaitve number to exit.");
-			long sectorTarget;
-			String line = UniversalUI.readNextLine(System.in).trim();
+			System.out.println("Please enter a number between 0 and " + (numPages - 1) + " or any negaitve number to exit.");
+			long targetPage;
 			try{
+				String line = UniversalUI.readNextLine(System.in).trim();
 				if(line.charAt(0) == '-') return;
-				sectorTarget = Long.parseLong(line);
+				targetPage = Long.parseLong(line);
 			}catch(Exception ignored){
 				continue;
 			}
 			
-			if(sectorTarget >= numSectors) continue;
+			if(targetPage >= numPages) continue;
 			
-			try{
-				source.readSector(sectorTarget, buffer);
-				System.out.println("Sector #" + sectorTarget + ":");
-				DumpUtils.binaryDump(buffer);
-				System.out.println();
-			}catch(Exception e){
-				e.printStackTrace();
+			for(String line : textRequestCallback.apply(Long.valueOf(targetPage))){
+				System.out.println(line);
 			}
+			System.out.println();
 		}
 	}
 }

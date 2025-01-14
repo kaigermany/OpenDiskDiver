@@ -3,13 +3,13 @@ package me.kaigermany.opendiskdiver.gui;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.function.Function;
 
 import me.kaigermany.opendiskdiver.DriveListProvider;
 import me.kaigermany.opendiskdiver.data.DriveInfo;
 import me.kaigermany.opendiskdiver.reader.ImageFileReader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.reader.ZipFileReader;
-import me.kaigermany.opendiskdiver.utils.DumpUtils;
 import me.kaigermany.opendiskdiver.utils.OpenFileDialog;
 import me.kaigermany.opendiskdiver.utils.SharedText;
 import me.kaigermany.opendiskdiver.utils.Utils;
@@ -229,23 +229,19 @@ public class WindowsUI implements UI {
 	}
 	
 	@Override
-	public void sectorInspector(ReadableSource source) {
-		long lastSector = 0;
-		byte[] buffer = new byte[512];
-		try{
-			source.readSector(lastSector, buffer);
-		}catch(Exception e){
-			e.printStackTrace();
-		}
-		String[] lastBinDump = DumpUtils.binaryDumpToString(buffer).split("\r\n");
-		final long numSectors = source.numSectors();
+	//public void sectorInspector(ReadableSource source) {
+	public void pagedTextViewer(long numPages, Function<Long, String[]> textRequestCallback){
+		long lastPage = 0;
+		
+		String[] lastText = textRequestCallback.apply(Long.valueOf(0));
+		
 		StringBuilder numberInputBuffer = new StringBuilder(16);
 		while(true){
 			ArrayList<String> text = new ArrayList<>();
-			text.add("Enter a sector number between 0 and " + (numSectors - 1) + " : " + numberInputBuffer + "_");
+			text.add("Enter a number between 0 and " + (numPages - 1) + " : " + numberInputBuffer + "_");
 			text.add("Use Arrow keys to navigate or press ESC to return.");
-			text.add("Sector #" + lastSector + ":");
-			for(String s : lastBinDump) text.add(s);
+
+			for(String s : lastText) text.add(s);
 			
 			int maxWidth = 0;
 			for(String s : text) maxWidth = Math.max(maxWidth, s.length());
@@ -255,14 +251,14 @@ public class WindowsUI implements UI {
 			}
 			screen.printText();
 			
-			long sector = lastSector;
+			long currentPage = lastPage;
 			Pair<Integer, String> key = ci.readKey();
 			if(key.getFirst() == 27){//ESC
 				return;
 			} else if(key.getSecond().equals("RightArrow") || key.getSecond().equals("DownArrow")){
-				sector = lastSector + 1;
+				currentPage = lastPage + 1;
 			} else if(key.getSecond().equals("LeftArrow") || key.getSecond().equals("UpArrow")){
-				sector = lastSector - 1;
+				currentPage = lastPage - 1;
 			} else if(key.getFirst() >= '0' && key.getFirst() <= '9'){
 				char chr = (char)key.getFirst().intValue();
 				numberInputBuffer.append(chr);
@@ -272,21 +268,15 @@ public class WindowsUI implements UI {
 				String numText = numberInputBuffer.toString();
 				numberInputBuffer.setLength(0);
 				try{
-					sector = Long.parseLong(numText);
+					currentPage = Long.parseLong(numText);
 				}catch(Exception e){
 					e.printStackTrace();
 				}
 			}
 			
-			if(sector >= 0 && sector < numSectors && sector != lastSector){
-				lastSector = sector;
-				try{
-					source.readSector(lastSector, buffer);
-				}catch(Exception e){
-					e.printStackTrace();
-				}
-				lastBinDump = DumpUtils.binaryDumpToString(buffer).split("\r\n");
-				
+			if(currentPage >= 0 && currentPage < numPages && currentPage != lastPage){
+				lastPage = currentPage;
+				lastText = textRequestCallback.apply(Long.valueOf(currentPage));
 			}
 		}
 	}
