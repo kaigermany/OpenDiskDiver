@@ -422,7 +422,7 @@ public class FatReader implements Reader, FileSystem {
 	private ReadableSource source;
 	private long bytesPerClustor;
 	
-	public ArrayList<ExFatFile> exFatFiles = new ArrayList<>();
+	public ArrayList<ExFatFile> exFatFiles;
 	
 	public FatReader() {}
 
@@ -524,27 +524,10 @@ public class FatReader implements Reader, FileSystem {
 			fatTable.load(source, bootSectorContainer_exFat.FatOffset + bootSectorContainer_exFat.FatLength * fatIndex);
 			fatTables[fatIndex] = fatTable;
 		}
-
-		System.out.println(DumpUtils.hexInt(fatTables[0].get(0)));
-		System.out.println(DumpUtils.hexInt(fatTables[0].get(1)));
-		System.out.println((fatTables[0].get(16463)));
-		System.out.println((fatTables[0].get(16464)));
-		System.out.println((fatTables[0].get(16465)));
-		System.out.println((fatTables[0].get(494837)));
-		System.out.println((fatTables[0].get(494836)));
-		System.out.println((fatTables[0].get(494835)));
-		System.out.println((fatTables[0].get(494838)));
-		System.out.println((fatTables[0].get(494839)));
 		
+		exFatFiles = new ArrayList<>();
 		
 		readDirExFat(fatTables[0], rootDirSector, "", files, bootSectorContainer_exFat.SectorsPerCluster, bootSectorContainer_exFat.ClusterHeapOffset);
-		/*
-		System.out.println(files.size() + "x -> [");
-		for(String name : files.keySet()){
-			System.out.println(name);
-		}
-		System.out.println("]");
-		*/
 	}
 	
 	private void readClassicFAT(byte[] bootSector) throws IOException {
