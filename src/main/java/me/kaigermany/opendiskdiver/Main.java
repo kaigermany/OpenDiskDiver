@@ -3,10 +3,12 @@ package me.kaigermany.opendiskdiver;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.Function;
 
 import me.kaigermany.opendiskdiver.data.Reader;
 import me.kaigermany.opendiskdiver.data.fat.FatReader;
@@ -16,6 +18,7 @@ import me.kaigermany.opendiskdiver.data.partition.PartitionReader;
 import me.kaigermany.opendiskdiver.datafilesystem.FileEntry;
 import me.kaigermany.opendiskdiver.datafilesystem.FileSystem;
 import me.kaigermany.opendiskdiver.gui.DiskCopyState;
+import me.kaigermany.opendiskdiver.gui.FileSystemBrowser;
 import me.kaigermany.opendiskdiver.gui.UI;
 import me.kaigermany.opendiskdiver.gui.UniversalUI;
 import me.kaigermany.opendiskdiver.gui.WindowsUI;
@@ -24,6 +27,7 @@ import me.kaigermany.opendiskdiver.probe.ProbeFunction;
 import me.kaigermany.opendiskdiver.probe.ProbeResult;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
+import me.kaigermany.opendiskdiver.utils.DumpUtils;
 import me.kaigermany.opendiskdiver.utils.Platform;
 import me.kaigermany.opendiskdiver.utils.Utils;
 import me.kaigermany.opendiskdiver.writer.ImageFileWriter;
@@ -160,7 +164,6 @@ public class Main {
 		}
 		writer.create(outFile, source);
 		
-		//ui.getCopyDiskActivityHandler().onCopy(source, writer);
 		copyDisk(source, writer, ui);
 		
 		writer.close();
@@ -239,7 +242,7 @@ public class Main {
 		}
 	}
 	
-	private static void analyzeSource(ReadableSource source, UI ui) throws IOException {
+	private static void analyzeSource(final ReadableSource source, UI ui) throws IOException {
 		ArrayList<Partition> partitions = new PartitionReader(source).getPartitions();
 		if(partitions.size() == 0){
 			analyzePartition(source, ui);
@@ -258,7 +261,31 @@ public class Main {
 					break;
 				}
 				case 1: {
-					ui.sectorInspector(source);
+					//ui.sectorInspector(source);
+					ui.pagedTextViewer(source.numSectors(), new Function<Long, String[]>() {
+						@Override
+						public String[] apply(Long sector) {
+							byte[] buffer = new byte[512];
+							boolean success;
+							try{
+								source.readSector(sector.longValue(), buffer);
+								success = true;
+							}catch(IOException e){
+								e.printStackTrace();
+								success = false;
+							}
+							
+							String text = "Sector #" + sector.toString() + ":\r\n";
+							if(success){
+								text += DumpUtils.binaryDumpToString(buffer);
+							} else {
+								text += "FAILED TO READ SECTOR!";
+							}
+							
+							return text.split("\r\n");
+						}
+					});
+					
 					break;
 				}
 				case 2: {
@@ -274,13 +301,17 @@ public class Main {
 						text.add("Sectors used: " + usedSectors);
 						text.add("Sectors free: " + (source.numSectors() - usedSectors));
 					}
-					text.add("##### Disk Layout: #####");
-					text.add("offset, size, type");
+					
+					text.add("");
+					
+					//build text as table
+					ArrayList<String[]> tableViewBuilder = new ArrayList<>();
+					tableViewBuilder.add(new String[]{"offset", "size", "type"});
 					if(isGPT){
-						text.add("0   +1   Protective MBR Partition Table");
-						text.add("1   +33  GPT Partition Table");
+						tableViewBuilder.add(new String[]{"0", "+1", "Protective MBR Partition Table"});
+						tableViewBuilder.add(new String[]{"1", "+33", "GPT Partition Table"});
 					} else {
-						text.add("0   +1   MBR Partition Table");
+						tableViewBuilder.add(new String[]{"0", "+1", "MBR Partition Table"});
 					}
 					long pos = isGPT ? 34 : 1;
 					long endPos = source.numSectors() - (isGPT ? 33 : 0);
@@ -291,19 +322,27 @@ public class Main {
 						long nextPartitionOffset = nextPartition != null ? nextPartition.offset : endPos;
 						if(pos != nextPartitionOffset){
 							long len = nextPartitionOffset - pos;
-							text.add(pos + "   +" + len + "   [Free Space]");
+							tableViewBuilder.add(new String[]{String.valueOf(pos), "+" + len, "[Free Space]"});
 							pos = nextPartitionOffset;
 							continue;
 						}
 						System.out.println(nextPartition);
 						partitionIndex++;
-						text.add(nextPartition.offset + "   +" + nextPartition.len + "   Partition " + partitionIndex);
+						tableViewBuilder.add(new String[]{String.valueOf(nextPartition.offset),
+								"+" + nextPartition.len, "Partition " + partitionIndex});
 						pos = nextPartition.offset + nextPartition.len;
 						nextPartition = it.hasNext() ? it.next() : null;
 					}
 					if(isGPT){
-						text.add(endPos + "   +33   GPT Backup Table");
+						tableViewBuilder.add(new String[]{String.valueOf(endPos), "+33", "GPT Backup Table"});
 					}
+
+					
+					for(String line : Utils.renderStylizedTable("Disk Layout", tableViewBuilder, null)){
+						text.add(line);
+					}
+					
+					
 					//text.add("findLastValidSector() -> " + findLastValidSector(source));
 					ui.showInfo(text.toArray(new String[text.size()]));
 					break;
@@ -315,56 +354,29 @@ public class Main {
 		}
 	}
 	
-	
-
-	private static void analyzePartition(ReadableSource source, UI ui) {
-		// TODO Auto-generated method stub
-		
+	private static void analyzePartition(ReadableSource partitionSource, UI ui) throws IOException {
+		listFilesFromSource(partitionSource, ui);
 	}
 
-	private static void listFilesFromSource(ReadableSource source, UI ui) throws IOException {
-		PartitionReader r = new PartitionReader(source);
-		ArrayList<Partition> partitions = r.getPartitions();
-		System.out.println("found partitions: " + partitions);
-		Reader reader = null;
-		if(partitions.size() > 0){
-			ReadableSource partitionSource = selectPartition(source, ui);
-			byte[] buffer = new byte[512];
-			partitionSource.readSector(0, buffer);
-			ProbeResult result = Probe.detectType(buffer);
-			System.out.println(result);
-			reader = result.getSortedResults().get(0).getReader();
-			if(reader != null) {
-				reader.read(partitionSource);
-			}
-			//TODO select partition by user
-			/*
-			for(Partition p : partitions){
-				System.out.println(p);
-				byte[] buffer = new byte[512];
-				p.source.readSector(0, buffer);
-				ProbeResult result = Probe.detectType(buffer);
-				System.out.println(result);
-				Reader reader = result.getSortedResults().get(0).getReader();
-				if(reader != null) {
-					reader.read(p.source);
-					break;
-				}
-			}
-			*/
-		} else {
-			System.out.println("no partitions found, try direct type detection...");
-			byte[] buffer = new byte[512];
-			source.readSector(0, buffer);
-			ProbeResult result = Probe.detectType(buffer);
-			System.out.println(result);
-			reader = result.getSortedResults().get(0).getReader();
-			if(reader != null) {
-				reader.read(source);
-			}
-		}
-		if(reader != null && reader instanceof FileSystem){
+	private static void listFilesFromSource(ReadableSource partitionSource, UI ui) throws IOException {
+		byte[] buffer = new byte[512];
+		partitionSource.readSector(0, buffer);
+		ProbeResult result = Probe.detectType(buffer);
+		buffer = null;
+		System.out.println(result);
+		Reader reader = result.getSortedResults().get(0).getReader();
+		if(reader == null) return;
+		
+		reader.read(partitionSource);
+		
+		if(reader instanceof FileSystem){
 			FileSystem fs = (FileSystem)reader;
+			
+			if(true){
+				FileSystemBrowser.browse(fs, ui);
+				return;
+			}
+			
 			List<FileEntry> files = fs.listFiles();
 			StringBuilder sb = new StringBuilder(files.size());
 			ArrayList<String> arr = new ArrayList<>(files.size());
@@ -389,6 +401,7 @@ public class Main {
 			for(String s : arr){
 				sb.append(s).append("\r\n");
 			}
+			/*
 			// dump test:
 			try{
 				byte[] a = sb.toString().getBytes("UTF-8");
@@ -398,30 +411,9 @@ public class Main {
 			}catch(Exception e){
 				e.printStackTrace();
 			}
+			*/
+			System.out.println(sb);
 		}
-		/*
-		if(reader instanceof NtfsReader){
-			NtfsReader ntfs = (NtfsReader)reader;
-			ntfs.read(p.source);
-			for(String file : ntfs.fileMap.keySet()){
-				//defender control
-				if(file != null && file.equalsIgnoreCase("defender")){
-					System.out.println(file);
-				}
-			}
-		}
-		*/
-		
-		/*
-		PartitionReader r = new PartitionReader(diskSource);
-		System.out.println(r.getPartitions());
-		
-		ArrayList<FatReader.FileEntry> entries = FatEntryFinder.scanReader(diskSource);
-		System.out.println(entries.toString().replace("}, {", "},\n{"));
-		
-		FatReader fr = new FatReader();
-		fr.read(r.getPartitions().get(0).source);
-		 */
 	}
 	
 	public static UI createUI(boolean useNativeUI){
