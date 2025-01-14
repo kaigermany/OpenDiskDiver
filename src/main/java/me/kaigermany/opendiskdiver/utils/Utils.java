@@ -1,5 +1,7 @@
 package me.kaigermany.opendiskdiver.utils;
 
+import java.util.ArrayList;
+
 public class Utils {
 	public static String toHumanReadableFileSize(long bytes){
 		if(bytes < 1024){
@@ -52,5 +54,79 @@ public class Utils {
         	e.printStackTrace();
         	return "";
         }
+	}
+	
+
+	public static String[] renderStylizedTable(String title, ArrayList<String[]> table, boolean[] alignRight){
+		String[] out = new String[table.size() + (title != null ? 1 : 0)];
+		int wp = 0;
+		for(String[] row : table){
+			if(row == null){
+				throw new IllegalArgumentException("table must not contain null objects!");
+			}
+		}
+		//extract max length
+		int[] strLenMap = new int[table.get(0).length];
+		for(String[] row : table){
+			if(strLenMap.length != row.length){
+				throw new IllegalArgumentException("expected table width: " + strLenMap.length + " but found entry width: " + row.length);
+			}
+			for(int i=0; i<row.length; i++){
+				strLenMap[i] = Math.max(strLenMap[i], row[i].length());
+			}
+		}
+		if(alignRight == null){
+			alignRight = new boolean[strLenMap.length];
+			for(int i=0; i<strLenMap.length; i++){
+				alignRight[i] = true;
+			}
+		}
+		int fullRowLen = 0;
+		for(int i=0; i<strLenMap.length; i++){
+			fullRowLen += strLenMap[i];//count max width
+		}
+		fullRowLen += strLenMap.length - 1;//include separators
+		StringBuilder sb = new StringBuilder(fullRowLen);//allocate max predicted space
+		if(title != null){//build title
+			String title2 = " " + title + ": ";
+			fullRowLen -= title2.length();
+			if(fullRowLen > 1){//try to smoothly fit into table design
+				for(int i=0; i<fullRowLen/2; i++){
+					sb.append('=');
+				}
+				sb.append(title2);
+				for(int i=fullRowLen/2; i<fullRowLen; i++){
+					sb.append('=');
+				}
+				out[wp++] = sb.toString();
+			} else {
+				out[wp++] = title + ":";
+			}
+		}
+		
+		//build every line
+		for(String[] row : table){
+			sb.setLength(0);//clear StringBuilder
+			for(int i=0; i<row.length; i++){
+				if(i > 0){
+					sb.append(' ');
+				}
+				int lenDiff = strLenMap[i] - row[i].length();
+				if(alignRight[i]){
+					for(int ii=0; ii<lenDiff; ii++){
+						sb.append(' ');
+					}
+					sb.append(row[i]);
+				} else {
+					sb.append(row[i]);
+					for(int ii=0; ii<lenDiff; ii++){
+						sb.append(' ');
+					}
+				}
+			}
+			out[wp++] = sb.toString();
+		}
+		
+		return out;
 	}
 }
