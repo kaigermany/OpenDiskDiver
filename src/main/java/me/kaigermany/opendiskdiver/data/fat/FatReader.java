@@ -26,7 +26,7 @@ public class FatReader implements Reader, FileSystem {
 			return 0;
 		long b = 0;
 		for (int i = 0; i < len; i++) {
-			b |= (a[offset + i] & 0xFF) << (i << 3);
+			b |= (a[offset + i] & 0xFFL) << (i << 3);
 		}
 		return b;
 	}
