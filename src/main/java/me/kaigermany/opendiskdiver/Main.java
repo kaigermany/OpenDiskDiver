@@ -116,7 +116,7 @@ public class Main {
 		int type = ui.cooseFromList("Please select an output file type:", new String[]{
 				".img - raw disk image",
 				".zip - zip file with blocks of compressed sectors",
-				"Abbort"
+				"Abort"
 		});
 		if(type == 2) return;
 		
@@ -127,7 +127,7 @@ public class Main {
 				int answer = ui.cooseFromList("File already exists!", new String[]{
 						"Rename it",
 						"continue and override it",
-						"Abbort"
+						"Abort"
 				});
 				if(answer == 0) continue;
 				if(answer == 2) outFile = null;
@@ -163,10 +163,11 @@ public class Main {
 			}
 		}
 		writer.create(outFile, source);
-		
-		copyDisk(source, writer, ui);
-		
-		writer.close();
+		try {
+			copyDisk(source, writer, ui);
+		} finally {
+			writer.close();
+		}
 	}
 	
 	public static void copyDisk(ReadableSource reader, Writer writer, UI ui) throws IOException {
