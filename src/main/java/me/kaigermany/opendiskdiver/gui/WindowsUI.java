@@ -59,7 +59,6 @@ public class WindowsUI implements UI {
 	@Override
 	public ReadableSource cooseSource() throws IOException {
 		ArrayList<DriveInfo> drives = DriveListProvider.listDrives();
-		
 		System.out.println(drives.toString().replace("}, {", "},\n{"));
 		final int numSlots = drives.size() + SharedText.pseudoSources.length;
 		int maxWidth = 0;
@@ -68,19 +67,22 @@ public class WindowsUI implements UI {
 		screen.resize(maxWidth + 12, numSlots);
 		int selectedSlot = 0;
 		while (true) {
+			screen.write("Please select a drive:", 0, 0, Screen.WHITE, Screen.BLACK);
 			for(int i=0; i<drives.size(); i++){
-				boolean selected = selectedSlot == i;
-				String foregroundColor = selected ? Screen.BLACK : Screen.WHITE;
-				String backgroundColor = selected ? Screen.WHITE : Screen.BLACK;
-				
 				DriveInfo di = drives.get(i);
+				boolean selected = selectedSlot == i;
+				String textCol = di.size == 0 ? Screen.DARKGRAY : Screen.WHITE;
+				String selectCol = di.size == 0 ? Screen.GRAY : Screen.WHITE;
+				String foregroundColor = selected ? Screen.BLACK : textCol;
+				String backgroundColor = selected ? selectCol : Screen.BLACK;
 				
-				screen.write(String.valueOf(i), 0, i, foregroundColor, backgroundColor);
-				screen.write(Utils.toHumanReadableFileSize(di.size), 4, i, foregroundColor, backgroundColor);
-				screen.write(di.name, 12, i, foregroundColor, backgroundColor);
+				
+				screen.write(String.valueOf(i), 0, i + 1, foregroundColor, backgroundColor);
+				screen.write(Utils.toHumanReadableFileSize(di.size), 4, i + 1, foregroundColor, backgroundColor);
+				screen.write(di.name, 12, i + 1, foregroundColor, backgroundColor);
 			}
 			for(int i=0; i<SharedText.pseudoSources.length; i++){
-				int linePos = drives.size() + i;
+				int linePos = drives.size() + i + 1;
 				boolean selected = selectedSlot == linePos;
 				String foregroundColor = selected ? Screen.BLACK : Screen.WHITE;
 				String backgroundColor = selected ? Screen.WHITE : Screen.BLACK;
