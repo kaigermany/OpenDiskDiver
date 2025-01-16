@@ -213,6 +213,18 @@ public class FatReader implements Reader, FileSystem {
 		}
 	}
 	
+	private static long parseTime(int timeBits, int extra10ms){
+		Calendar cal = Calendar.getInstance();
+		cal.set(14, 0);
+		cal.set(13, (timeBits & 0x1F) * 2);
+		cal.set(12, (timeBits >> 5) & 0x3F);
+		cal.set(11, (timeBits >> 11) & 0x1F);
+		cal.set(5, (timeBits >> 16) & 0x1F);
+		cal.set(2, (timeBits >> 21 & 0xF) - 1);
+		cal.set(1, 1980 + ((timeBits >> 25) & 0x7F));
+		return cal.getTimeInMillis() + (extra10ms * 10);
+	}
+	
 	public static class ExFatEntryObject{
 		public static ExFatEntryObject parse(byte[] buf, int off){
 			int attributeFlags = (int) readLittleEndian(buf, off + 4, 4);
@@ -226,17 +238,6 @@ public class FatReader implements Reader, FileSystem {
 			boolean ATTR_DIRECTORY = (attributeFlags & 16) != 0;
 			System.out.println("ATTR_DIRECTORY = " + ATTR_DIRECTORY);
 			return new ExFatEntryObject(numFollowupEntries, ATTR_DIRECTORY, timeModified);
-		}
-		private static long parseTime(int timeBits, int extra10ms){
-			Calendar cal = Calendar.getInstance();
-			cal.set(14, 0);
-			cal.set(13, (timeBits & 0x1F) * 2);
-			cal.set(12, (timeBits >> 5) & 0x3F);
-			cal.set(11, (timeBits >> 11) & 0x1F);
-			cal.set(5, (timeBits >> 16) & 0x1F);
-			cal.set(2, (timeBits >> 21 & 0xF) - 1);
-			cal.set(1, 1980 + ((timeBits >> 25) & 0x7F));
-			return cal.getTimeInMillis() + (extra10ms * 10);
 		}
 		
 		public final int numFollowupEntries;
@@ -787,6 +788,7 @@ public class FatReader implements Reader, FileSystem {
 			out[i++] = a;
 		return out;
 	}
+	
 	private static void readDir(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
 			ArrayList<FatFile> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries) throws IOException {
 		byte[] container = new byte[clustors.length * bytesPerClustor];
@@ -797,6 +799,56 @@ public class FatReader implements Reader, FileSystem {
 		readDirDirect(source, clustors, bytesPerClustor, offsetFix, dir, files, clustorMap, type, readDetetedEntrys, doneDirEntries, container);
 	}
 	
+	private static String parse8dot3name(byte[] dataPtr, int offset){
+		int i, val;
+		StringBuilder sb = new StringBuilder(8 + 1 + 3);
+		val = dataPtr[offset] & 0xFF;
+		//KANJI lead byte value fix
+		sb.append((char)(val == 0x05 ? 0xE5 : val));
+		for(i=1; i<8; i++){
+			if((val = dataPtr[offset + i] & 0xFF) == 0) break;
+			sb.append((char)val);
+		}
+		offset += 8;
+		if(dataPtr[offset] == 0) return sb.toString();
+		sb.append('.');
+		for(i=0; i<3; i++){
+			if((val = dataPtr[offset + i] & 0xFF) == 0) break;
+			sb.append((char)val);
+		}
+		return sb.toString();
+	}
+	
+	private static void readDirDirect_newTODO(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
+			ArrayList<FatFile> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries, byte[] container) throws IOException {
+		int numBytes = clustors.length * bytesPerClustor;
+		for (int offset = 0; offset < numBytes; offset+=32) {
+			if (container[offset] == 0x00){
+				break;// free entry, including every following index!
+			}
+			if (container[offset] == (byte) 0xE5 && !readDetetedEntrys){
+				continue;// free entry
+			}
+			int flags = container[offset + 11] & 0xFF;
+			boolean isLongName = flags == 0x0F;
+			
+			
+			boolean ATTR_READ_ONLY = (flags & 1) != 0;
+			boolean ATTR_HIDDEN = (flags & 2) != 0;
+			boolean ATTR_SYSTEM = (flags & 4) != 0;
+			boolean ATTR_VOLUME_ID = (flags & 8) != 0;
+			boolean ATTR_DIRECTORY = (flags & 16) != 0;
+			boolean ATTR_ARCHIVE = (flags & 32) != 0;
+			
+			int fileSize = (int) readLittleEndian(container, offset + 28, 4);
+			int fileIndex = (int) ( readLittleEndian(container, offset + 26, 2) | (readLittleEndian(container, offset + 20, 2) << 16) );
+			
+			int extra10ms = container[offset + 13] & 0xFF;
+			long timeCreated = parseTime((int) readLittleEndian(container, offset + 14, 4), extra10ms);
+			long timeAccessed = parseTime((int)(readLittleEndian(container, offset + 18, 2) << 16), 0);
+			long timeModified = parseTime((int) readLittleEndian(container, offset + 22, 4), 0);
+		}
+	}
 	private static void readDirDirect(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
 			ArrayList<FatFile> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries, byte[] container) throws IOException {
 		
