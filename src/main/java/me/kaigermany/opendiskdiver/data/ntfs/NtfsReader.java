@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.LongBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -259,7 +260,17 @@ public class NtfsReader implements Reader, FileSystem {
 		System.arraycopy(arr, off, out, 0, len);
 		return out;
 	}
-
+	//"NTFS stores dates as the number of 100ns units since Jan 1st 1601. Unix, stores dates as the number of seconds since Jan 1st 1970."
+	// https://flatcap.github.io/linux-ntfs/ntfs/help/glossary.html -> "Time Stamp"
+	// https://stackoverflow.com/questions/6161776/convert-windows-filetime-to-second-in-unix-linux
+	// https://cs.ou.nl/members/hugo/supervision/2019-jelle.bouma-bsc-thesis.pdf
+	private static long convertTimeToUnix(long ntfsTime){
+		//if(true) return ntfsTime;
+		final long NTFS_TO_UNIX_EPOCH_SECONDS = 11644473600_000L;
+		final long HUNDRED_NANOSECONDS_IN_ONE_MILLISECOND = 10000L;
+        return (ntfsTime / HUNDRED_NANOSECONDS_IN_ONE_MILLISECOND) - NTFS_TO_UNIX_EPOCH_SECONDS;
+	}
+	// https://flatcap.github.io/linux-ntfs/ntfs/attributes/index.html
 	private void parseAttribute(NtfsNode outputNode, byte[] data, NtfsNode MFTnode, RawNtfsNode[] rawNodes) {
 		final int AttributeFileName = 0x30;
 		final int AttributeData = 0x80;
@@ -278,10 +289,17 @@ public class NtfsReader implements Reader, FileSystem {
 		if (!isExternalAttibute) {
 			int ValueLength = ByteArrayUtils.read32(data, 16);
 			int ValueOffset = ByteArrayUtils.read16(data, 16 + 4);
-			if (attributeType == AttributeFileName) {
+			if (attributeType == 0x10) {// https://flatcap.github.io/linux-ntfs/ntfs/attributes/standard_information.html
+    			LongBuffer lb = ByteBuffer.wrap(data, ValueOffset, 8*4).order(ByteOrder.LITTLE_ENDIAN).asLongBuffer();
+    			long FileCreation = lb.get();
+    			long FileAltered = lb.get();
+    			long MFTChanged = lb.get();
+    			long FileRead = lb.get();
+    			outputNode.lastEdited = convertTimeToUnix(FileAltered);
+			} else if (attributeType == AttributeFileName) {
 				AttributeFileName attributeFileName = new AttributeFileName(data, ValueOffset);
 
-				outputNode.lastEdited = attributeFileName.ChangeTime;
+				//outputNode.lastEdited = convertTimeToUnix(attributeFileName.ChangeTime);
 				outputNode.ParentNodeIndex = ByteArrayUtils.read48(data, ValueOffset);
 
 				if (attributeFileName.NameType == 1 || outputNode.Name == null) {
@@ -482,11 +500,22 @@ public class NtfsReader implements Reader, FileSystem {
 	            	ResidentAttribute residentAttribute = new ResidentAttribute(ptr, AttributeOffset+ptr_offset+16);
 	            	if(debug) System.out.println("Resident");
 	            	switch (attribute_AttributeType){
+	            		case 0x10:{// https://flatcap.github.io/linux-ntfs/ntfs/attributes/standard_information.html
+	            			int offset2 = AttributeOffset + residentAttribute.ValueOffset+ptr_offset;
+	            			LongBuffer lb = ByteBuffer.wrap(ptr, offset2, 8*4).order(ByteOrder.LITTLE_ENDIAN).asLongBuffer();
+	            			long FileCreation = lb.get();
+	            			long FileAltered = lb.get();
+	            			long MFTChanged = lb.get();
+	            			long FileRead = lb.get();
+	            			node.lastEdited = convertTimeToUnix(FileAltered);
+	            			break;
+	            		}
 	                    case 0x30://AttributeType.AttributeFileName:
 	                    	int offset2 = AttributeOffset + residentAttribute.ValueOffset+ptr_offset;
 	                    	AttributeFileName attributeFileName = new AttributeFileName(ptr, offset2);
 	                    	
-	                    	node.lastEdited = attributeFileName.ChangeTime;
+	                    	//node.lastEdited = convertTimeToUnix(attributeFileName.ChangeTime);
+	                    	
 	                    	node.ParentNodeIndex = ByteArrayUtils.read48(ptr, offset2);
 	                        
 	                        if (attributeFileName.NameType == 1 || node.Name == null){
@@ -796,7 +825,7 @@ public class NtfsReader implements Reader, FileSystem {
         public long AllocatedSize;
         public long DataSize;
         public int FileAttributes;
-        public int AlignmentOrReserved;
+        public int AlignmentOrReserved;//Used by EAs and Reparse
         public byte NameLength;
         public byte NameType;//NTFS=0x01, DOS=0x02
         public int NameOffset_struct_getCurrOffset;
