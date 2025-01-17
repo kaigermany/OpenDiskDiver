@@ -19,6 +19,8 @@ import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 import me.kaigermany.opendiskdiver.utils.DumpUtils;
 
 public class FatReader implements Reader, FileSystem {
+	public static final String DELETED_DIRECTOY_NAME_PREFIX = "deleted_dir_";
+	
 	private static final byte[] EXFAT_SIGNATURE = "EXFAT   ".getBytes();
 	
 	private static long readLittleEndian(byte[] a, int offset, int len) {
@@ -314,7 +316,7 @@ public class FatReader implements Reader, FileSystem {
 	public void readDirExFat(ExFatChainTable fat, byte[] dirContents, String path, HashMap<String, ExFatEntryObject> filesOut
 			, int clusterSize, long clusterHeapOffset) throws IOException {
 		
-		final boolean parseDeletedEntries = false;
+		final boolean parseDeletedEntries = false;//TODO add to method parameters...
 		
 		ExFatStreamExtensionBuilder currentStreamBuilder = null;
 		ExFatEntryObject currentObject = null;
@@ -346,19 +348,14 @@ public class FatReader implements Reader, FileSystem {
 						
 						if(!currentObject.isDir){
 							exFatFiles.add(new ExFatFile(extend.name, fullName, extend.validDataLen,
-									currentObject.timeLastModified, currentObject, fat, clusterSize, clusterHeapOffset, source, extend.isContinousFileStream));
-							/*
-							if(fullName.equals("/Unbenannt.png")){
-								byte[] bytes = readFullFile(currentObject, fat, clusterSize, clusterHeapOffset);
-								try{
-									FileOutputStream fos = new FileOutputStream("H:/dumptest_direct.png");
-									fos.write(bytes);
-									fos.close();
-								}catch(Exception e){
-									e.printStackTrace();
-								}
+									currentObject.timeLastModified, currentObject, fat, clusterSize,
+									clusterHeapOffset, source, extend.isContinousFileStream));
+						} else {
+							if(parseDeletedEntries){
+								exFatFiles.add(new ExFatFile(DELETED_DIRECTOY_NAME_PREFIX + extend.name, path + "/" + DELETED_DIRECTOY_NAME_PREFIX + extend.name, extend.validDataLen,
+										currentObject.timeLastModified, currentObject, fat, clusterSize,
+										clusterHeapOffset, source, extend.isContinousFileStream));
 							}
-							*/
 						}
 						
 						if(currentObject.isDir && !currentObject.isDeleted) {
@@ -809,6 +806,13 @@ public class FatReader implements Reader, FileSystem {
 			if((val = dataPtr[offset + i] & 0xFF) == 0) break;
 			sb.append((char)val);
 		}
+		for(i=7; i>0; i--){//technically a manual trim
+			if(dataPtr[offset + i] == ' '){
+				sb.setLength(i);//deletes last char.
+			} else {
+				break;
+			}
+		}
 		offset += 8;
 		if(dataPtr[offset] == 0) return sb.toString();
 		sb.append('.');
@@ -816,40 +820,132 @@ public class FatReader implements Reader, FileSystem {
 			if((val = dataPtr[offset + i] & 0xFF) == 0) break;
 			sb.append((char)val);
 		}
-		return sb.toString();
+		return sb.toString().trim();
 	}
 	
-	private static void readDirDirect_newTODO(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
+	private static char[] readLongNameEntry(byte[] arr, int off){
+		//CharBuffer cb = ByteBuffer.wrap(container, offset, 32).order(ByteOrder.LITTLE_ENDIAN).asCharBuffer();
+		char[] out = new char[13];//5+6+2
+		off++;
+		for (int i = 0; i < 5; i++) {
+			out[i] = (char) ((arr[i * 2 + off] & 0xFF) | (arr[i * 2 + 1 + off] << 8));
+		}
+		off += 13;
+		for (int i = 0; i < 6; i++) {
+			out[i + 5] = (char) ((arr[i * 2 + off] & 0xFF) | (arr[i * 2 + 1 + off] << 8));
+		}
+		off += 14;
+		for (int i = 0; i < 2; i++) {
+			out[i + 11] = (char) ((arr[i * 2 + off] & 0xFF) | (arr[i * 2 + 1 + off] << 8));
+		}
+		return out;
+	}
+	
+	private static void readDirDirect(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
 			ArrayList<FatFile> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries, byte[] container) throws IOException {
+		
+//readDetetedEntrys = true;
+		
 		int numBytes = clustors.length * bytesPerClustor;
+		//System.out.println(DumpUtils.binaryDumpToString(container));
+		HashMap<Integer, char[]> longNameMap = new HashMap<Integer, char[]>();
+		int biggestLongNameEntry = -1;
 		for (int offset = 0; offset < numBytes; offset+=32) {
 			if (container[offset] == 0x00){
 				break;// free entry, including every following index!
 			}
-			if (container[offset] == (byte) 0xE5 && !readDetetedEntrys){
+			boolean isDeletedFile = container[offset] == (byte) 0xE5;
+			if (isDeletedFile && !readDetetedEntrys){
 				continue;// free entry
 			}
 			int flags = container[offset + 11] & 0xFF;
 			boolean isLongName = flags == 0x0F;
-			
-			
-			boolean ATTR_READ_ONLY = (flags & 1) != 0;
-			boolean ATTR_HIDDEN = (flags & 2) != 0;
-			boolean ATTR_SYSTEM = (flags & 4) != 0;
-			boolean ATTR_VOLUME_ID = (flags & 8) != 0;
-			boolean ATTR_DIRECTORY = (flags & 16) != 0;
-			boolean ATTR_ARCHIVE = (flags & 32) != 0;
-			
-			int fileSize = (int) readLittleEndian(container, offset + 28, 4);
-			int fileIndex = (int) ( readLittleEndian(container, offset + 26, 2) | (readLittleEndian(container, offset + 20, 2) << 16) );
-			
-			int extra10ms = container[offset + 13] & 0xFF;
-			long timeCreated = parseTime((int) readLittleEndian(container, offset + 14, 4), extra10ms);
-			long timeAccessed = parseTime((int)(readLittleEndian(container, offset + 18, 2) << 16), 0);
-			long timeModified = parseTime((int) readLittleEndian(container, offset + 22, 4), 0);
+			if(isLongName){
+				char[] data = readLongNameEntry(container, offset);
+				int index = container[offset] & 0x3F;
+				if(!readDetetedEntrys){
+					boolean isLastEntry = (container[offset] & 0x40) != 0;
+					if(isLastEntry){
+						biggestLongNameEntry = index;
+					}
+				} else {
+					if(biggestLongNameEntry == -1){
+						biggestLongNameEntry = 1;
+					} else {
+						biggestLongNameEntry++;
+						for(int i=biggestLongNameEntry; i>1; i--){
+							longNameMap.put(i, longNameMap.get(i - 1));
+						}
+					}
+					index = 1;
+				}
+				longNameMap.put(index, data);
+				//System.out.println("#" + biggestLongNameEntry + " -> '" + new String(data) + "'");
+			} else {
+				String name = parse8dot3name(container, offset);
+				
+				boolean ATTR_READ_ONLY = (flags & 1) != 0;
+				boolean ATTR_HIDDEN = (flags & 2) != 0;
+				boolean ATTR_SYSTEM = (flags & 4) != 0;
+				boolean ATTR_VOLUME_ID = (flags & 8) != 0;
+				boolean ATTR_DIRECTORY = (flags & 16) != 0;
+				boolean ATTR_ARCHIVE = (flags & 32) != 0;
+				
+				int fileSize = (int) readLittleEndian(container, offset + 28, 4);
+				int fileIndex = (int) ( readLittleEndian(container, offset + 26, 2) | (readLittleEndian(container, offset + 20, 2) << 16) );
+				
+				int extra10ms = container[offset + 13] & 0xFF;
+				long timeCreated = parseTime((int) readLittleEndian(container, offset + 14, 4), extra10ms);
+				long timeAccessed = parseTime((int)(readLittleEndian(container, offset + 18, 2) << 16), 0);
+				long timeModified = parseTime((int) readLittleEndian(container, offset + 22, 4), 0);
+				
+				if(biggestLongNameEntry != -1){
+					StringBuilder sb = new StringBuilder(biggestLongNameEntry * 13);
+					boolean damaged = false;
+					for(int i=1; i<=biggestLongNameEntry; i++){
+						char[] segment = longNameMap.get(i);
+						if(segment == null){//missing entry?
+							damaged = true;
+							for(int ii=0; ii<13; ii++) sb.append(' ');
+						} else {
+							for(int ii=0; ii<13; ii++) {
+								char c = segment[ii];
+								if(c == 0) break;
+								sb.append(c);
+							}
+						}
+					}
+					name = sb.toString();
+					if(damaged){
+						name = name.trim();//ensure no space chars at start or end.
+					}
+					biggestLongNameEntry = -1;
+					longNameMap.clear();
+				}
+				
+				if (name.equals(".") || name.equals("..")) continue;
+				
+				System.out.println("name = " + name);
+				int[] objCoustors = readClusters(clustorMap, fileIndex, type);
+				if (ATTR_DIRECTORY && !isDeletedFile) {//deleted directories point into undefined space!
+					try {
+						System.out.println("objCoustors: " + Arrays.toString(objCoustors));
+						readDir(source, objCoustors, bytesPerClustor, offsetFix, new Dir(dir.path + name + "/"), files,
+								clustorMap, type, readDetetedEntrys, doneDirEntries);
+					} catch (Exception e) {
+						//e.printStackTrace();
+						System.err.println(e);
+					}
+				} else {
+					if(ATTR_DIRECTORY){
+						name = DELETED_DIRECTOY_NAME_PREFIX + name;
+					}
+					files.add(new FatFile(dir, name, timeModified, objCoustors, fileSize));
+				}
+			}
 		}
 	}
-	private static void readDirDirect(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
+	private static void readDirDirect_old(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
 			ArrayList<FatFile> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries, byte[] container) throws IOException {
 		
 		// System.out.println(Arrays.toString(container));
