@@ -283,13 +283,8 @@ public class FatReader implements Reader, FileSystem {
 		public boolean putNextNameEntry(byte[] buf, int off){
 			int charsToRead = Math.min(fileNameLen - fileNameWritePtr, 15);
 			ByteBuffer.wrap(buf, off + 2, 30).order(ByteOrder.LITTLE_ENDIAN).asCharBuffer().get(fileName, fileNameWritePtr, charsToRead);
-			/*
-			byte[] a = new byte[30];
-			ByteBuffer.wrap(buf, 2, 30).get(a);
-			System.out.println(DumpUtils.binaryDumpToString(a));
-			*/
 			fileNameWritePtr += charsToRead;
-			System.out.println("\t\t\tfileNameWritePtr="+fileNameWritePtr + ", fileNameLen="+fileNameLen);
+			//System.out.println("\t\t\tfileNameWritePtr="+fileNameWritePtr + ", fileNameLen="+fileNameLen);
 			return fileNameWritePtr == fileNameLen;
 		}
 		public ExFatStreamExtension build(){
@@ -314,9 +309,7 @@ public class FatReader implements Reader, FileSystem {
 	}
 	
 	public void readDirExFat(ExFatChainTable fat, byte[] dirContents, String path, HashMap<String, ExFatEntryObject> filesOut
-			, int clusterSize, long clusterHeapOffset) throws IOException {
-		
-		final boolean parseDeletedEntries = false;//TODO add to method parameters...
+			, int clusterSize, long clusterHeapOffset, boolean parseDeletedEntries) throws IOException {
 		
 		ExFatStreamExtensionBuilder currentStreamBuilder = null;
 		ExFatEntryObject currentObject = null;
@@ -359,7 +352,7 @@ public class FatReader implements Reader, FileSystem {
 						}
 						
 						if(currentObject.isDir && !currentObject.isDeleted) {
-							readDirExFat(fat, currentObject, fullName, filesOut, clusterSize, clusterHeapOffset);
+							readDirExFat(fat, currentObject, fullName, filesOut, clusterSize, clusterHeapOffset, parseDeletedEntries);
 						}
 						
 						currentObject = null;
@@ -370,23 +363,12 @@ public class FatReader implements Reader, FileSystem {
 	}
 	
 	public void readDirExFat(ExFatChainTable fat, ExFatEntryObject rootDir, String path, HashMap<String, ExFatEntryObject> filesOut
-			, int clusterSize, long clusterHeapOffset) throws IOException {
+			, int clusterSize, long clusterHeapOffset, boolean parseDeletedEntries) throws IOException {
 		byte[] dirContents = readFullFile(rootDir, fat, clusterSize, clusterHeapOffset);
-		readDirExFat(fat, dirContents, path, filesOut, clusterSize, clusterHeapOffset);
+		readDirExFat(fat, dirContents, path, filesOut, clusterSize, clusterHeapOffset, parseDeletedEntries);
 	}
 	
 	byte[] readFullFile(ExFatEntryObject file, ExFatChainTable fat, int clusterSize, long clusterHeapOffset) throws IOException {
-		/*{
-			int cluster = (int)file.streamInfo.firstCluster;
-			int ptr = cluster;
-			ArrayList<Long> list = new ArrayList<>();
-			while(ptr != -1){
-				list.add(ptr & 0xFFFFFFFFL);
-				System.out.println(list);
-				ptr = fat.get(ptr);
-				if(list.size() > 20) throw new RuntimeException();
-			}
-		}*/
 		int cluster = (int)file.streamInfo.firstCluster;
 		byte[] clusterBuffer = new byte[clusterSize * 512];
 		byte[] out = new byte[(int)file.streamInfo.validDataLen];
@@ -395,6 +377,7 @@ public class FatReader implements Reader, FileSystem {
 			if(wp == out.length){
 				break;
 			}
+			/*
 			System.out.println("cluster = " + cluster);
 			System.out.println("location = " + cluster);
 			{
@@ -402,11 +385,12 @@ public class FatReader implements Reader, FileSystem {
 				source.readSector(clusterHeapOffset + ((cluster) * (long)clusterSize), dump);
 				System.out.println(DumpUtils.binaryDumpToString(dump));
 			}
+			*/
 			source.readSectors(clusterHeapOffset + ((cluster & 0xFFFFFFFFL) * (long)clusterSize), clusterSize, clusterBuffer);
 			cluster = fat.get(cluster);//fat[cluster];
 			int len = Math.min(out.length - wp, clusterBuffer.length);
-			System.out.println("len="+len);
-			System.out.println("out.length="+out.length);
+			//System.out.println("len="+len);
+			//System.out.println("out.length="+out.length);
 			System.arraycopy(clusterBuffer, 0, out, wp, len);
 			wp += len;
 		}
@@ -429,21 +413,25 @@ public class FatReader implements Reader, FileSystem {
 		this.source = source;
 		byte[] bootSector = new byte[512];
 		source.readSector(0, bootSector);
-		//DumpUtils.binaryDump(bootSector);
 		if(ByteArrayUtils.isEmptySector(bootSector)){//alternative boot sector
-			source.readSector(6, bootSector);//TODO make compatible with ExFat!
+			source.readSector(12, bootSector);//read ExFAT backup boot sector
+			if(!isExFat(bootSector)){//maybe possible but very very unlikely to false-positive trigger.
+				source.readSector(6, bootSector);//read FAT backup boot sector
+			}
 		}
 		
 		boolean isExFat = isExFat(bootSector);
 		System.out.println("isExFat: " + isExFat);
 		
+		final boolean readDetetedEntries = false;
+		
 		if(isExFat){
-			readExFAT(bootSector);
+			readExFAT(bootSector, readDetetedEntries);
 		} else {
-			readClassicFAT(bootSector);
+			readClassicFAT(bootSector, readDetetedEntries);
 		}
 	}
-	private void readExFAT(byte[] bootSector) throws IOException {
+	private void readExFAT(byte[] bootSector, boolean parseDeletedEntries) throws IOException {
 		// https://en.wikipedia.org/wiki/ExFAT
 		// https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification
 		// https://events.static.linuxfound.org/images/stories/pdf/lceu11_munegowda_s.pdf
@@ -525,10 +513,11 @@ public class FatReader implements Reader, FileSystem {
 		
 		exFatFiles = new ArrayList<>();
 		
-		readDirExFat(fatTables[0], rootDirSector, "", files, bootSectorContainer_exFat.SectorsPerCluster, bootSectorContainer_exFat.ClusterHeapOffset);
+		readDirExFat(fatTables[0], rootDirSector, "", files, bootSectorContainer_exFat.SectorsPerCluster,
+				bootSectorContainer_exFat.ClusterHeapOffset, parseDeletedEntries);
 	}
 	
-	private void readClassicFAT(byte[] bootSector) throws IOException {
+	private void readClassicFAT(byte[] bootSector, boolean readDetetedEntries) throws IOException {
 		FAT_BootSector bootSectorContainer = new FAT_BootSector(bootSector);
 		this.type = bootSectorContainer.type;
 		
@@ -561,7 +550,7 @@ public class FatReader implements Reader, FileSystem {
 			try{
 				System.out.println("offsetFix -> " + offsetFix);
 				HashSet<Long> doneDirEntries = new HashSet<Long>(1024);
-				readDir(source, rootClustors, bytesPerClustor, offsetFix, dir, files, fats[0], bootSectorContainer.type, false, doneDirEntries);
+				readDir(source, rootClustors, bytesPerClustor, offsetFix, dir, files, fats[0], bootSectorContainer.type, readDetetedEntries, doneDirEntries);
 				
 			}catch(Throwable e){
 				e.printStackTrace();
@@ -576,7 +565,7 @@ public class FatReader implements Reader, FileSystem {
 				int rootDirSectorSize = bootSectorContainer.rootDirSectors;
 				byte[] directData = new byte[rootDirSectorSize * 512];
 				source.readSectors(rootDirSectorOffset, rootDirSectorSize, directData, 0);
-				readDirDirect(source, rootClustors, bytesPerClustor, offsetFix, dir, files, fats[0], bootSectorContainer.type, false, doneDirEntries, directData);
+				readDirDirect(source, rootClustors, bytesPerClustor, offsetFix, dir, files, fats[0], bootSectorContainer.type, readDetetedEntries, doneDirEntries, directData);
 			}catch(Throwable e){
 				e.printStackTrace();
 			}
@@ -771,12 +760,6 @@ public class FatReader implements Reader, FileSystem {
 						+ ")");
 				break;
 			}
-			// System.out.println("next: " + next + " " +
-			// Integer.toHexString(next));
-			// System.out.println("EOF_FLAG: " +
-			// Integer.toHexString(EOF_FLAG));
-			// System.out.println(next + " >= " + EOF_FLAG + " -> " + (next
-			// >= EOF_FLAG));
 			list.add(next);
 		}
 		int[] out = new int[list.size()];
@@ -824,7 +807,6 @@ public class FatReader implements Reader, FileSystem {
 	}
 	
 	private static char[] readLongNameEntry(byte[] arr, int off){
-		//CharBuffer cb = ByteBuffer.wrap(container, offset, 32).order(ByteOrder.LITTLE_ENDIAN).asCharBuffer();
 		char[] out = new char[13];//5+6+2
 		off++;
 		for (int i = 0; i < 5; i++) {
@@ -925,11 +907,10 @@ public class FatReader implements Reader, FileSystem {
 				
 				if (name.equals(".") || name.equals("..")) continue;
 				
-				System.out.println("name = " + name);
 				int[] objCoustors = readClusters(clustorMap, fileIndex, type);
 				if (ATTR_DIRECTORY && !isDeletedFile) {//deleted directories point into undefined space!
 					try {
-						System.out.println("objCoustors: " + Arrays.toString(objCoustors));
+						//System.out.println("objCoustors: " + Arrays.toString(objCoustors));
 						readDir(source, objCoustors, bytesPerClustor, offsetFix, new Dir(dir.path + name + "/"), files,
 								clustorMap, type, readDetetedEntrys, doneDirEntries);
 					} catch (Exception e) {
@@ -945,179 +926,6 @@ public class FatReader implements Reader, FileSystem {
 			}
 		}
 	}
-	private static void readDirDirect_old(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
-			ArrayList<FatFile> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries, byte[] container) throws IOException {
-		
-		// System.out.println(Arrays.toString(container));
-		int entrySize = 32;
-		int entryCount = clustors.length * bytesPerClustor / entrySize;
-		/*
-		 * { byte[] tmp = new byte[entrySize]; for(int i=0; i<entryCount;
-		 * i++) { System.arraycopy(container, i*entrySize, tmp, 0,
-		 * entrySize); System.out.println(Arrays.toString(tmp)); } }
-		 */
-		for (int i = 0; i < entryCount; i++) {
-			int p = i * entrySize;
-			if (container[p] == (byte) 0xE5 && !readDetetedEntrys){
-				continue;// free entry
-			}
-			if (container[p] == 0x00){
-				break;// free entry, including every following index!
-			}
-			// System.out.println("container[p]: " + container[p] + " | " +
-			// Integer.toHexString(container[p]));
-			int flags = container[p + 11] & 0xFF;
-			// System.out.println("flags: " + flags);
-			boolean ATTR_READ_ONLY = (flags & 1) != 0;
-			boolean ATTR_HIDDEN = (flags & 2) != 0;
-			boolean ATTR_SYSTEM = (flags & 4) != 0;
-			boolean ATTR_VOLUME_ID = (flags & 8) != 0;
-			boolean ATTR_DIRECTORY = (flags & 16) != 0;
-			boolean ATTR_ARCHIVE = (flags & 32) != 0;
-			boolean isLongName = flags == 0x0F;
-			if (isLongName){
-				continue;
-			}
-			int fileSize = (int) readLittleEndian(container, p + 28, 4);
-			int fileIndex = (int) (readLittleEndian(container, p + 26, 2)
-					| (readLittleEndian(container, p + 20, 2) << 16));
-
-			if (!isLongName) {
-				String name = new String(container, p, 11);
-				// System.out.println("Index in Dir: " + i);
-				// System.out.println("name="+name);
-				// System.out.println("fileSize: " + fileSize + ",
-				// fileIndex: "+fileIndex);
-				long time;
-				{
-					int dosTime = (int) readLittleEndian(container, p + 22, 2);
-					int dosDate = (int) readLittleEndian(container, p + 24, 2);
-					Calendar cal = Calendar.getInstance();
-
-					cal.set(14, 0);
-					cal.set(13, (dosTime & 0x1F) * 2);
-					cal.set(12, dosTime >> 5 & 0x3F);
-					cal.set(11, dosTime >> 11);
-
-					cal.set(5, dosDate & 0x1F);
-					cal.set(2, (dosDate >> 5 & 0xF) - 1);
-					cal.set(1, 1980 + (dosDate >> 9));
-
-					time = cal.getTimeInMillis();
-					// System.out.println("time: " + time);
-				}
-				if (i > 0) {
-					int i_backup = i;
-					StringBuilder sb = new StringBuilder();
-					while (true) {
-						i--;
-						if (i < 0)
-							break;
-						p = i * entrySize;
-						int flags2 = container[p + 11] & 0xFF;
-						// println("flags2 != 15 -> " + (flags2 != 15));
-						if (flags2 != 15)
-							break;
-						// String name1 = new String(container, p+1, 10);
-						sb.append(newStr(container, p + 1, 10)); // +5 chars
-						// System.out.println("\t name1="+name1);
-						// String name2 = new String(container, p+14, 12);
-						sb.append(newStr(container, p + 14, 12)); // +6
-																	// chars
-						// System.out.println("\t name2="+name2);
-						// String name3 = new String(container, p+28, 4);
-						sb.append(newStr(container, p + 28, 4)); // +2 chars
-						// System.out.println("\t name3="+name3);
-						// int index = container[p + entrySize + 0];
-						// System.out.println("\t next index: " + index);
-						// println("(index & 0x40) != 0 -> " + ((index &
-						// 0x40) != 0));
-						// if((index & 0x40) != 0) continue;
-						// break;
-						continue;
-					}
-					i = i_backup;
-					String fullName = sb.toString();
-					if (fullName.length() > 0) {
-						for (int ii = 0; ii < fullName.length(); ii++) {
-							if (fullName.charAt(ii) == 0) {
-								fullName = fullName.substring(0, ii);
-								// System.out.println("fullname::substr:
-								// @"+ii);
-								break;
-							}
-						}
-						System.out.println("fullName: " + fullName);
-						name = fullName;
-					}
-				} else {
-					for (int ii = 0; ii < name.length(); ii++) {
-						if (name.charAt(ii) == 0) {
-							name = name.substring(0, ii + 1);
-							break;
-						}
-					}
-				}
-
-				for (int ii = name.length() - 1; ii >= 0; ii--) {
-					if (name.charAt(ii) != 32) {
-						name = name.substring(0, ii + 1);
-						break;
-					}
-				}
-				// System.out.println("name=>"+name);
-				if (name.startsWith(".")) {
-					char[] a = name.toCharArray();
-					int[] b = new int[a.length];
-					for (int ii = 0; ii < a.length; ii++)
-						b[ii] = a[ii] & 0xFFFF;
-					System.out.println(Arrays.toString(b));
-				}
-				if (name.equals(".") || name.equals(".."))
-					continue;
-				
-				if(doneDirEntries.contains((long)fileIndex)){
-					return;
-				} else {
-					doneDirEntries.add((long)fileIndex);
-				}
-				int[] objCoustors = readClusters(clustorMap, fileIndex, type);
-				
-				if (ATTR_DIRECTORY) {
-					System.out.println("ATTR_DIRECTORY");
-					/*
-					if(Arrays.equals(objCoustors, clustors)){
-						//System.out.println("INFO/WARN: unexpected recursion in current dir's cluster-list found! entry will be skiped.");
-						System.err.println("ERROR: unexpected recursion in current dir's cluster-list found!");
-						return;
-					}
-					*/
-					try {
-						System.out.println("objCoustors: " + Arrays.toString(objCoustors));
-						readDir(source, objCoustors, bytesPerClustor, offsetFix, new Dir(dir.path + name + "/"), files,
-								clustorMap, type, readDetetedEntrys, doneDirEntries);
-					} catch (Exception e) {
-						//e.printStackTrace();
-						System.err.println(e);
-					}
-					
-					System.out.println(Arrays.toString(objCoustors));
-				} else {
-					files.add(new FatFile(dir, name, time, objCoustors, fileSize));
-				}
-			}
-		}
-	}
-	
-	private static String newStr(byte[] arr, int off, int len) {
-		char[] buf = new char[len / 2];
-		for (int i = 0; i < buf.length; i++) {
-			buf[i] = (char) ((arr[i * 2 + off] & 0xFF) | (arr[i * 2 + 1 + off] << 8));
-		}
-		if (buf[0] == 0x05) buf[0] = 0xE5; // KANJI lead byte fix
-		return new String(buf);
-	}
-	
 
 	public static class Dir {
 		public String path;
