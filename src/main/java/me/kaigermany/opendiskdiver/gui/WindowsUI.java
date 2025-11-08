@@ -64,7 +64,7 @@ public class WindowsUI implements UI {
 		int maxWidth = 0;
 		for(DriveInfo di : drives) maxWidth = Math.max(maxWidth, di.name.length());
 		for(String s : SharedText.pseudoSources) maxWidth = Math.max(maxWidth, s.length());
-		screen.resize(maxWidth + 12, numSlots);
+		screen.resize(maxWidth + 12, numSlots + 1);
 		int selectedSlot = 0;
 		while (true) {
 			screen.write("Please select a drive:", 0, 0, Screen.WHITE, Screen.BLACK);
@@ -82,13 +82,14 @@ public class WindowsUI implements UI {
 				screen.write(di.name, 12, i + 1, foregroundColor, backgroundColor);
 			}
 			for(int i=0; i<SharedText.pseudoSources.length; i++){
-				int linePos = drives.size() + i + 1;
+				int linePos = drives.size() + i;
+				int drawPos = linePos + 1;
 				boolean selected = selectedSlot == linePos;
 				String foregroundColor = selected ? Screen.BLACK : Screen.WHITE;
 				String backgroundColor = selected ? Screen.WHITE : Screen.BLACK;
-				screen.write(String.valueOf(linePos), 0, linePos, foregroundColor, backgroundColor);
+				screen.write(String.valueOf(linePos), 0, drawPos, foregroundColor, backgroundColor);
 				//screen.write(toHumanReadableFileSize(di.size), 4, i, foregroundColor, backgroundColor);
-				screen.write(SharedText.pseudoSources[i], 12, linePos, foregroundColor, backgroundColor);
+				screen.write(SharedText.pseudoSources[i], 12, drawPos, foregroundColor, backgroundColor);
 			}
 			screen.printText();
 			
@@ -178,7 +179,7 @@ public class WindowsUI implements UI {
 		screen.resize(barWidth + 2, 4);
 		screen.write("Location: " + pos + " / " + maxPos + "   " + (Math.floor(10000D * pos / maxPos) / 100) + " %", 0, 0, Screen.WHITE, Screen.BLACK);
 		int switchPos = (int)(pos * barWidth / maxPos);
-		System.out.println("switchPos="+switchPos);
+		//System.out.println("switchPos="+switchPos);
 		screen.writeChar('|', 0, 1, Screen.GREEN, Screen.BLACK);
 		screen.writeChar('|', barWidth+1, 1, Screen.GREEN, Screen.BLACK);
 		for(int p=0; p<barWidth; p++){
@@ -188,7 +189,7 @@ public class WindowsUI implements UI {
 				screen.writeChar(' ', p+1, 1, Screen.BLACK, Screen.BLACK);
 			} else {
 				int subPos = (int)(pos * barWidth * 4 / maxPos) % 4;
-				System.out.println("subPos="+subPos);
+				//System.out.println("subPos="+subPos);
 				switch(subPos){
 					case 0:screen.writeChar(' ', p+1, 1, Screen.BLACK, Screen.BLACK);break;
 					case 1:screen.writeChar(' ', p+1, 1, Screen.BLACK, Screen.DARKGRAY);break;
