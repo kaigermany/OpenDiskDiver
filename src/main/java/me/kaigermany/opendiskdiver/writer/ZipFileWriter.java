@@ -71,8 +71,8 @@ public class ZipFileWriter implements Writer {
 			zos.putNextEntry(new ZipEntry(String.valueOf(writtenSectorOffset)));
 			zos.write(writeBuffer, 0, writePointer);
 			zos.closeEntry();
-			writtenSectorOffset += writePointer / 512;
 		}
+		writtenSectorOffset += writePointer / 512;
 		writePointer = 0;
 	}
 }
