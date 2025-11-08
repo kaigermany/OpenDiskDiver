@@ -540,7 +540,8 @@ public class FatReader implements Reader, FileSystem {
 			long offset = (bootSectorContainer.reserved_sectors * bootSectorContainer.bytes_per_sector) + (i * (bootSectorContainer.fatSz * bootSectorContainer.bytes_per_sector));
 			fats[i] = readFAT(bootSectorContainer.clusterCount, source, getEntrySize, offset, bootSectorContainer.fatSz * bootSectorContainer.bytes_per_sector);
 		}
-		int[] rootClustors = readClusters(fats[0], bootSectorContainer.rootClustorNumber, bootSectorContainer.type);
+		int[] selectedFatTable = fats[0];
+		int[] rootClustors = readClusters(selectedFatTable, bootSectorContainer.rootClustorNumber, bootSectorContainer.type);
 		System.out.println(Arrays.toString(rootClustors));
 		long offsetFix = (bootSectorContainer.FirstDataSector * bootSectorContainer.bytes_per_sector);// - (bytesPerClustor * bootSectorContainer.rootClustorNumber);
 		Dir dir = new Dir("");//"/"
@@ -550,7 +551,7 @@ public class FatReader implements Reader, FileSystem {
 			try{
 				System.out.println("offsetFix -> " + offsetFix);
 				HashSet<Long> doneDirEntries = new HashSet<Long>(1024);
-				readDir(source, rootClustors, bytesPerClustor, offsetFix, dir, files, fats[0], bootSectorContainer.type, readDetetedEntries, doneDirEntries);
+				readDir(source, rootClustors, bytesPerClustor, offsetFix, dir, files, selectedFatTable, bootSectorContainer.type, readDetetedEntries, doneDirEntries);
 				
 			}catch(Throwable e){
 				e.printStackTrace();
@@ -565,7 +566,7 @@ public class FatReader implements Reader, FileSystem {
 				int rootDirSectorSize = bootSectorContainer.rootDirSectors;
 				byte[] directData = new byte[rootDirSectorSize * 512];
 				source.readSectors(rootDirSectorOffset, rootDirSectorSize, directData, 0);
-				readDirDirect(source, rootClustors, bytesPerClustor, offsetFix, dir, files, fats[0], bootSectorContainer.type, readDetetedEntries, doneDirEntries, directData);
+				readDirDirect(source, rootClustors, bytesPerClustor, offsetFix, dir, files, selectedFatTable, bootSectorContainer.type, readDetetedEntries, doneDirEntries, directData);
 			}catch(Throwable e){
 				e.printStackTrace();
 			}
@@ -797,12 +798,14 @@ public class FatReader implements Reader, FileSystem {
 			}
 		}
 		offset += 8;
-		if(dataPtr[offset] == 0) return sb.toString();
+		if(dataPtr[offset] == 0 || dataPtr[offset] == 32) return sb.toString();//break if chr == 0 or whitespace
+		//System.out.println("dataPtr[offset] = " + dataPtr[offset] + "("+((char)dataPtr[offset])+")");
 		sb.append('.');
 		for(i=0; i<3; i++){
 			if((val = dataPtr[offset + i] & 0xFF) == 0) break;
 			sb.append((char)val);
 		}
+		//System.out.println("sb.toString().trim() = " + sb.toString().trim());
 		return sb.toString().trim();
 	}
 	
@@ -842,6 +845,9 @@ public class FatReader implements Reader, FileSystem {
 			}
 			int flags = container[offset + 11] & 0xFF;
 			boolean isLongName = flags == 0x0F;
+			
+			//System.out.println("flags = " + Integer.toHexString(flags) + " | isLongName = " + isLongName + ", index = " + (container[offset] & 0x3F));
+			
 			if(isLongName){
 				char[] data = readLongNameEntry(container, offset);
 				int index = container[offset] & 0x3F;
@@ -906,10 +912,15 @@ public class FatReader implements Reader, FileSystem {
 				}
 				
 				if (name.equals(".") || name.equals("..")) continue;
+				//System.out.println("dir = '" + dir.path + name + "/', name = '" + name + "'");
 				
 				int[] objCoustors = readClusters(clustorMap, fileIndex, type);
 				if (ATTR_DIRECTORY && !isDeletedFile) {//deleted directories point into undefined space!
 					try {
+						if(doneDirEntries.contains(Long.valueOf(fileIndex))){
+							throw new IOException("loop detected while scanning directory '" + dir.path + name + "/'");
+						}
+						doneDirEntries.add(Long.valueOf(fileIndex));
 						//System.out.println("objCoustors: " + Arrays.toString(objCoustors));
 						readDir(source, objCoustors, bytesPerClustor, offsetFix, new Dir(dir.path + name + "/"), files,
 								clustorMap, type, readDetetedEntrys, doneDirEntries);
