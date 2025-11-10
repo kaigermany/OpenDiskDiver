@@ -3,16 +3,22 @@ package me.kaigermany.opendiskdiver.gui;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import me.kaigermany.opendiskdiver.datafilesystem.FileEntry;
 import me.kaigermany.opendiskdiver.datafilesystem.FileSystem;
 import me.kaigermany.opendiskdiver.utils.Utils;
+import me.kaigermany.opendiskdiver.writer.DirectFileOutputStream;
 
 public class FileSystemBrowser {
 	public static class Node {
@@ -118,7 +124,10 @@ public class FileSystemBrowser {
 	
 	public static void browse(FileSystem fs, UI ui){
 		List<FileEntry> files = fs.listFiles();
+		
+		//TODO
 		Node rootnode = buildTree(files);
+		
 		while(true){
 			switch (ui.cooseFromList("Files: " + files.size() + " What do you want do do now?", new String[]{
 					"Visit file list",
@@ -137,19 +146,19 @@ public class FileSystemBrowser {
 					dumpSortedFiles(ui, files);
 					break;
 				case 3:
-					
+					exportAllFiles(ui, fs, files);
 					break;
 				case 4: return;
 			}
 		}
 	}
-	
+
 	private static void dumpSortedFiles(UI ui, List<FileEntry> files){
 		Comparator<FileEntry> sorter;
 		switch (ui.cooseFromList("How you would like to sort the files?", new String[]{
 				"Sort by absolute path",
 				"Sort by name",
-				"Sort by age",
+				"Sort by time",
 				"Sort by size",
 				"Abort"
 		})) {
@@ -165,7 +174,7 @@ public class FileSystemBrowser {
 			files = new ArrayList<>(files);//Duplicate instance
 			files.sort(sorter);
 			ArrayList<String[]> table = new ArrayList<>();
-			table.add(new String[]{"name", "age", "size", "raw unix age", "raw size", "absolute path"});
+			table.add(new String[]{"name", "timestamp", "size", "raw unix time (ms)", "raw size", "absolute path"});
 			for(FileEntry e : files){
 				table.add(new String[]{
 						e.name, new Date(e.age).toString(), Utils.toHumanReadableFileSize(e.size), 
@@ -188,6 +197,63 @@ public class FileSystemBrowser {
 			
 			//lets tell the runtime that we can now drop the whole garbage we created here.
 			System.gc();
+		}
+	}
+	
+	private static void exportAllFiles(UI ui, FileSystem fs, List<FileEntry> files) {
+		switch (ui.cooseFromList("Export " + files.size() + " files as *.zip?", new String[]{
+				"Yes",
+				"Abort"
+		})) {
+			case 0: {
+				File outputZip = ui.saveAs();
+				long bytesWritten = 0;
+				DiskCopyState state = new DiskCopyState(files.size());
+				try{
+					ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(new DirectFileOutputStream(outputZip), 64 << 20));
+					byte[] copyBuffer = new byte[1 << 20];
+					int len;
+					for(int i=0; i<files.size(); i++){
+						FileEntry file = files.get(i);
+						state.setCurrentSector(i + 1);
+						ui.onDiskCopyStateUpdate(state);
+						{
+							String name = file.nameAndPath;
+							if(name.startsWith("/")) name = name.substring(1);
+							ZipEntry e = new ZipEntry(name);
+							e.setCreationTime(FileTime.fromMillis(file.age));
+							e.setLastModifiedTime(FileTime.fromMillis(file.age));
+							zos.putNextEntry(e);
+						}
+						long byteCount = 0;
+						try{
+							InputStream is = file.openInputStream();
+							while((len = is.read(copyBuffer)) != -1){
+								zos.write(copyBuffer, 0, len);
+								byteCount += len;
+							}
+							is.close();
+							if(byteCount != file.size){
+								throw new IOException("file size diff: expected " + file.size + ", got " + byteCount + ", file: '" + file.nameAndPath + "'");
+							}
+						}catch(Exception fileCopyException){
+							fileCopyException.printStackTrace();
+							state.incrUnreadableSectorCount();
+						}
+						zos.closeEntry();
+						bytesWritten += byteCount;
+					}
+					zos.close();
+				}catch(Exception e){
+					e.printStackTrace();
+				}
+				ui.showInfo(new String[]{
+						"finished writing " + files.size() + " files.",
+						"bytes written: " + bytesWritten,
+						state.getUnreadableSectorCount() == 0 ? "No invalid files detected." : ("Found " + state.getUnreadableSectorCount() + " invalid files!")
+				});
+			}break;
+			case 1: default: return;
 		}
 	}
 }

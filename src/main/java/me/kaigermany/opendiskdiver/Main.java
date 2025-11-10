@@ -1,13 +1,9 @@
 package me.kaigermany.opendiskdiver;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.Iterator;
-import java.util.List;
 import java.util.function.Function;
 
 import me.kaigermany.opendiskdiver.data.Reader;
@@ -15,7 +11,6 @@ import me.kaigermany.opendiskdiver.data.fat.FatReader;
 import me.kaigermany.opendiskdiver.data.ntfs.NtfsReader;
 import me.kaigermany.opendiskdiver.data.partition.Partition;
 import me.kaigermany.opendiskdiver.data.partition.PartitionReader;
-import me.kaigermany.opendiskdiver.datafilesystem.FileEntry;
 import me.kaigermany.opendiskdiver.datafilesystem.FileSystem;
 import me.kaigermany.opendiskdiver.gui.DiskCopyState;
 import me.kaigermany.opendiskdiver.gui.FileSystemBrowser;
@@ -33,6 +28,9 @@ import me.kaigermany.opendiskdiver.utils.Utils;
 import me.kaigermany.opendiskdiver.writer.ImageFileWriter;
 import me.kaigermany.opendiskdiver.writer.Writer;
 import me.kaigermany.opendiskdiver.writer.ZipFileWriter;
+
+// https://www.grc.com/srrecovery.htm
+// http://web.archive.org/web/20190311160549/http://www.forensicswiki.org/wiki/Carving
 
 public class Main {
 	static{
@@ -75,7 +73,21 @@ public class Main {
 				return ByteArrayUtils.isEmptySector(sampleData) ? 1 : 0;
 			}
 		});
+		
+		Probe.regiterProbeTester(new ProbeFunction() {
+			@Override
+			public String getName() { return "EXT"; }
+
+			@Override
+			public Reader getReader() { return null; }
+			
+			@Override
+			public float probe(byte[] sampleData) throws Throwable {
+				return ByteArrayUtils.isEmptySector(sampleData) ? 1.01F : 0;
+			}
+		});
 	}
+	
 	
 	public static void main(String[] args) {
 		final UI ui = createUI(false);
@@ -171,46 +183,45 @@ public class Main {
 	}
 	
 	public static void copyDisk(ReadableSource reader, Writer writer, UI ui) throws IOException {
-		byte[] buf = new byte[1 << 20];
-		int maxLen = buf.length / 512;
-		long pos = 0;
-		long maxPos = reader.numSectors();
-		//long badSectors = 0;
-		
-		DiskCopyState state = new DiskCopyState(maxPos);
-		
-		while(pos < maxPos){
-			int numSectorsToRead = (int)Math.min(maxPos - pos, maxLen);
-			try{
-				
-				reader.readSectors(pos, numSectorsToRead, buf, 0);
-				writer.write(buf, numSectorsToRead * 512);
-				pos += numSectorsToRead;
+		DiskCopyState state = new DiskCopyState(reader.numSectors());
+		try{
+			byte[] buf = new byte[1 << 20];
+			int maxLen = buf.length / 512;
+			long pos = 0;
+			long maxPos = reader.numSectors();
+			while(pos < maxPos){
+				int numSectorsToRead = (int)Math.min(maxPos - pos, maxLen);
+				try{
+					
+					reader.readSectors(pos, numSectorsToRead, buf, 0);
+					writer.write(buf, numSectorsToRead * 512);
+					pos += numSectorsToRead;
 
-				state.setCurrentSector(pos);
-				ui.onDiskCopyStateUpdate(state);
-			}catch(IOException blockReadError){
-				//block read failed, try single sector read mode
-				
-				byte[] dummyBuffer = new byte[512];
-				byte[] readBuffer = new byte[512];
-				for(int offset=0; offset<numSectorsToRead; offset++){
-					//onUpdateScreen(pos, maxPos, badSectors);
-					state.setCurrentSector(pos + offset);
+					state.setCurrentSector(pos);
 					ui.onDiskCopyStateUpdate(state);
-					try{
-						reader.readSectors(pos + offset, 1, readBuffer, 0);
-						writer.write(readBuffer, 512);
-					}catch(IOException sectorReadError){
-						//badSectors++;
-						state.incrUnreadableSectorCount();
-						writer.write(dummyBuffer, 512);
+				}catch(IOException blockReadError){
+					//block read failed, try single sector read mode
+					byte[] dummyBuffer = new byte[512];
+					byte[] readBuffer = new byte[512];
+					for(int offset=0; offset<numSectorsToRead; offset++){
+						state.setCurrentSector(pos + offset);
+						ui.onDiskCopyStateUpdate(state);
+						try{
+							reader.readSectors(pos + offset, 1, readBuffer, 0);
+							writer.write(readBuffer, 512);
+						}catch(IOException sectorReadError){
+							state.incrUnreadableSectorCount();
+							writer.write(dummyBuffer, 512);
+						}
 					}
+					pos += numSectorsToRead;
 				}
-				pos += numSectorsToRead;
-				
 			}
-			//onUpdateScreen(pos, maxPos, badSectors);
+		} finally {
+			ui.showInfo(new String[]{
+					"finished writing " + reader.numSectors() + " sectors.",
+					state.getUnreadableSectorCount() == 0 ? "No invalid sectors detected." : ("Found " + state.getUnreadableSectorCount() + " invalid sectors!")
+			});
 		}
 	}
 	
@@ -373,47 +384,7 @@ public class Main {
 		if(reader instanceof FileSystem){
 			FileSystem fs = (FileSystem)reader;
 			
-			if(true){
-				FileSystemBrowser.browse(fs, ui);
-				return;
-			}
-			
-			List<FileEntry> files = fs.listFiles();
-			StringBuilder sb = new StringBuilder(files.size());
-			ArrayList<String> arr = new ArrayList<>(files.size());
-			for(FileEntry f : files){
-				//System.out.println(f.nameAndPath);
-				//TODO check why there sometimes is f.name == null !
-				if(f.name == null) continue;
-				arr.add(f.nameAndPath);
-			}
-			arr.sort(new Comparator<String>() {
-				@Override
-				public int compare(String o1, String o2) {
-					int l = Math.min(o1.length(), o2.length());
-					for(int i=0; i<l; i++){
-						char c1 = o1.charAt(i);
-						char c2 = o2.charAt(i);
-						if(c1 != c2) return Character.compare(c1, c2);
-					}
-					return Integer.compare(o1.length(), o2.length());
-				}
-			});
-			for(String s : arr){
-				sb.append(s).append("\r\n");
-			}
-			/*
-			// dump test:
-			try{
-				byte[] a = sb.toString().getBytes("UTF-8");
-				FileOutputStream fos = new FileOutputStream(new File("H:/dump.txt"));
-				fos.write(a);
-				fos.close();
-			}catch(Exception e){
-				e.printStackTrace();
-			}
-			*/
-			System.out.println(sb);
+			FileSystemBrowser.browse(fs, ui);
 		}
 	}
 	
