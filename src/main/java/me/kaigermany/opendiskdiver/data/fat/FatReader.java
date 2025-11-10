@@ -403,6 +403,7 @@ public class FatReader implements Reader, FileSystem {
 	
 	private ReadableSource source;
 	private long bytesPerClustor;
+	private long fat32dataOffset;
 	
 	public ArrayList<ExFatFile> exFatFiles;
 	
@@ -544,6 +545,7 @@ public class FatReader implements Reader, FileSystem {
 		int[] rootClustors = readClusters(selectedFatTable, bootSectorContainer.rootClustorNumber, bootSectorContainer.type);
 		System.out.println(Arrays.toString(rootClustors));
 		long offsetFix = (bootSectorContainer.FirstDataSector * bootSectorContainer.bytes_per_sector);// - (bytesPerClustor * bootSectorContainer.rootClustorNumber);
+		fat32dataOffset = offsetFix;
 		Dir dir = new Dir("");//"/"
 		
 		if(bootSectorContainer.type == FatType.FAT32){
@@ -620,7 +622,7 @@ public class FatReader implements Reader, FileSystem {
 		} else {
 			ArrayList<FileEntry> list = new ArrayList<>(files.size());
 			for(FatFile e : files){
-				list.add(new FatFileEntry(e, source, bytesPerClustor));
+				list.add(new FatFileEntry(e, source, bytesPerClustor, fat32dataOffset));
 			}
 			return list;
 		}

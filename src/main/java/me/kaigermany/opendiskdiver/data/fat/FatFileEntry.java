@@ -11,12 +11,14 @@ public class FatFileEntry extends FileEntry {
 	private final int[] clustorList;
 	private final long bytesPerClustor;
 	private final ReadableSource source;
+	private final long dataOffset;
 	
-	public FatFileEntry(FatFile e, ReadableSource source, long clustorSizeInBytes) {
+	public FatFileEntry(FatFile e, ReadableSource source, long clustorSizeInBytes, long dataOffset) {
 		super(e.nameOnly, e.name, e.fileSize, e.age);
 		this.clustorList = e.clustors;
 		this.source = source;
 		this.bytesPerClustor = clustorSizeInBytes;
+		this.dataOffset = dataOffset;
 	}
 
 	@Override
@@ -40,7 +42,11 @@ public class FatFileEntry extends FileEntry {
 					clusterIndexPos++;
 					currentClustor = readCluster(clusterIndexPos);
 					if(currentClustor == null) return -1;
-					maxLen = Math.min(currentClustor.length, (int)(bytesPerClustor * clustorList.length - FatFileEntry.super.size));
+					maxLen = (int)bytesPerClustor;
+					if(clusterIndexPos + 1 == clustorList.length){
+						maxLen = (int)(FatFileEntry.super.size % bytesPerClustor);
+					}
+					//Math.min(currentClustor.length, (int)(bytesPerClustor * clustorList.length - FatFileEntry.super.size));
 					currentPos = 0;
 				}
 				int maxCopyLen = Math.min(len, maxLen - currentPos);
@@ -54,7 +60,7 @@ public class FatFileEntry extends FileEntry {
 			
 			private byte[] readCluster(int index) throws IOException {
 				if(index >= clustorList.length) return null;
-				int pos = clustorList[index];
+				long pos = (clustorList[index] * bytesPerClustor) + dataOffset;
 				byte[] buf = new byte[(int)bytesPerClustor];
 				source.readSectors(pos / 512, (int)(bytesPerClustor / 512), buf);
 				return buf;
