@@ -3,9 +3,12 @@ package me.kaigermany.opendiskdiver;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.function.Function;
 
+import me.kaigermany.opendiskdiver.analysis.FatEntryScanner;
+import me.kaigermany.opendiskdiver.analysis.Scanner;
 import me.kaigermany.opendiskdiver.data.Reader;
 import me.kaigermany.opendiskdiver.data.fat.FatReader;
 import me.kaigermany.opendiskdiver.data.ntfs.NtfsReader;
@@ -124,6 +127,14 @@ public class Main {
 		}
 	}
 	
+	public static UI createUI(boolean useNativeUI){
+		if(Platform.isWindows() && !useNativeUI){
+			return new WindowsUI();
+		} else {
+			return new UniversalUI();
+		}
+	}
+	
 	private static void copySource(ReadableSource source, UI ui) throws IOException {
 		int type = ui.cooseFromList("Please select an output file type:", new String[]{
 				".img - raw disk image",
@@ -237,9 +248,10 @@ public class Main {
 	private static ReadableSource selectPartition(ReadableSource diskSource, UI ui) throws IOException {
 		ArrayList<Partition> partitions = new PartitionReader(diskSource).getPartitions();
 		if(partitions.size() == 0){
+			ui.cooseFromList("Cant read Partition table.", new String[]{"Select whole drive."});
 			return diskSource;
-		} else if(partitions.size() == 1){
-			return partitions.get(0).source;
+		//} else if(partitions.size() == 1){
+		//	return partitions.get(0).source;
 		} else {
 			
 			String[] list = new String[partitions.size()];
@@ -258,13 +270,13 @@ public class Main {
 		ArrayList<Partition> partitions = new PartitionReader(source).getPartitions();
 		if(partitions.size() == 0){
 			analyzePartition(source, ui);
-			return;
 		}
 		while(true){
 			switch( ui.cooseFromList("Please select a analyze method:", new String[]{
 					"Select specific partition",
 					"Inspect sectors",
 					"Show partition table details",
+					"Enter analyzer-mode",
 					"Back"
 			}) ){
 				case 0:{
@@ -360,6 +372,10 @@ public class Main {
 					break;
 				}
 				case 3:{
+					diskAnalyzerMode(source, ui);
+					break;
+				}
+				case 4:{
 					return;
 				}
 			}
@@ -367,7 +383,20 @@ public class Main {
 	}
 	
 	private static void analyzePartition(ReadableSource partitionSource, UI ui) throws IOException {
-		listFilesFromSource(partitionSource, ui);
+		byte[] buffer = new byte[512];
+		partitionSource.readSector(0, buffer);
+		boolean hasNoFilesystem = Probe.detectType(buffer).getSortedResults().isEmpty();
+		buffer = null;
+		if(hasNoFilesystem){
+			int continueAnalyze = ui.cooseFromList("Unable to detect a valid Filesystem. Enter analyzer-mode?", new String[]{
+					"Yes",
+					"Abort and return"
+			});
+			if(continueAnalyze == 1) return;
+			diskAnalyzerMode(partitionSource, ui);
+		} else {
+			listFilesFromSource(partitionSource, ui);
+		}
 	}
 
 	private static void listFilesFromSource(ReadableSource partitionSource, UI ui) throws IOException {
@@ -378,6 +407,7 @@ public class Main {
 		System.out.println(result);
 		Reader reader = result.getSortedResults().get(0).getReader();
 		if(reader == null) return;
+		result = null;
 		
 		reader.read(partitionSource);
 		
@@ -387,12 +417,36 @@ public class Main {
 			FileSystemBrowser.browse(fs, ui);
 		}
 	}
-	
-	public static UI createUI(boolean useNativeUI){
-		if(Platform.isWindows() && !useNativeUI){
-			return new WindowsUI();
-		} else {
-			return new UniversalUI();
+
+	private static void diskAnalyzerMode(ReadableSource source, UI ui) throws IOException {
+		ui.showInfo(new String[]{
+			"begin analyze " + source.numSectors() + " sectors...",
+		}, false);
+		
+		ArrayList<String> log = new ArrayList<>(1024);
+		ArrayList<Scanner> scannerList = new ArrayList<>();
+		scannerList.add(new FatEntryScanner());
+		
+		long diskSize = source.numSectors();
+		byte[] buffer = new byte[512];
+		long lastRedraw = System.currentTimeMillis();
+		for(long offset=0; offset<diskSize; offset++){
+			source.readSector(offset, buffer);
+			
+			for(Scanner scanner : scannerList){
+				scanner.scan(buffer, offset, log);
+			}
+			
+			long t = System.currentTimeMillis();
+			if(t - 1000 >= lastRedraw){
+				lastRedraw = t;
+				int maxSize = Math.min(10, log.size());
+				String[] consoleMessage = new String[maxSize + 1];
+				log.subList(log.size() - maxSize, log.size()).toArray(consoleMessage);
+				consoleMessage[maxSize] = "Scanner Location: " + offset + " / " + diskSize + "   " + (Math.floor(10000D * offset / diskSize) / 100) + " %";
+				ui.showInfo(consoleMessage, false);
+			}
 		}
+		ui.showInfo(log.toArray(new String[log.size()]), true);
 	}
 }
