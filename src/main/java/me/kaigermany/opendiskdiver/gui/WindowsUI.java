@@ -198,7 +198,7 @@ public class WindowsUI implements UI {
 				}
 			}
 		}
-		screen.write("Unreadable Sectors: " + badSectors + "   " + (Math.floor((double)badSectors / (double)maxPos) / 10000) + " %",
+		screen.write("Unreadable Sectors: " + badSectors + "   " + (Math.floor((double)badSectors / (double)maxPos * 10000D) / 100D) + " %",
 				0, 2, badSectors == 0 ? Screen.WHITE : "Red", Screen.BLACK);
 		if(isPaused){
 			screen.write(" ||   PAUSED   [Type 'p' to continue]", 0, 3, Screen.YELLOW, Screen.DARKBLUE);

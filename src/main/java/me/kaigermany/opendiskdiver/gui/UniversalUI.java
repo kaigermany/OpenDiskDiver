@@ -131,7 +131,7 @@ public class UniversalUI implements UI {
 
 	private void onUpdateScreen(long pos, long maxPos, long badSectors, boolean isPaused){
 		System.out.println("Location: " + pos + " / " + maxPos + " \t " + (Math.floor(10000D * pos / maxPos) / 100) + " %");
-		System.out.println("Unreadable Sectors: " + badSectors + " \t " + (Math.floor((double)badSectors / (double)maxPos) / 10000) + " %");
+		System.out.println("Unreadable Sectors: " + badSectors + " \t " + (Math.floor((double)badSectors / (double)maxPos * 10000D) / 100D) + " %");
 		if(isPaused){
 			System.out.println("[Type 'pause' to continue copy process]");
 		} else {
