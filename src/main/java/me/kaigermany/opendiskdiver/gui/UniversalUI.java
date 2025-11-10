@@ -140,7 +140,7 @@ public class UniversalUI implements UI {
 	}
 
 	@Override
-	public void showInfo(String[] text) {
+	public void showInfo(String[] text, boolean awaitUserAcknowledge) {
 		int maxWidth = 0;
 		for(String s : text) maxWidth = Math.max(maxWidth, s.length());
 		System.out.print('+');

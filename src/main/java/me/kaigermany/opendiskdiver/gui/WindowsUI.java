@@ -209,11 +209,11 @@ public class WindowsUI implements UI {
 	}
 
 	@Override
-	public void showInfo(String[] text) {
+	public void showInfo(String[] text, boolean awaitUserAcknowledge) {
 		String lastLineText = "Press any key to return.";
-		int maxWidth = lastLineText.length();
+		int maxWidth = (awaitUserAcknowledge ? lastLineText.length() : 0);
 		for(String s : text) maxWidth = Math.max(maxWidth, s.length());
-		screen.resize(maxWidth + 2, text.length + 3);
+		screen.resize(maxWidth + 2, text.length + 2 + (awaitUserAcknowledge ? 1 : 0));
 
 		screen.writeChar('+', 0, 0, Screen.WHITE, Screen.BLACK);
 		screen.writeChar('+', maxWidth + 1, 0, Screen.WHITE, Screen.BLACK);
@@ -226,9 +226,9 @@ public class WindowsUI implements UI {
 			screen.writeChar('|', maxWidth + 1, i + 1, Screen.WHITE, Screen.BLACK);
 			screen.write(text[i], 1, i + 1, Screen.WHITE, Screen.BLACK);
 		}
-		screen.write(lastLineText, 0, text.length + 2, Screen.WHITE, Screen.BLACK);
+		if(awaitUserAcknowledge) screen.write(lastLineText, 0, text.length + 2, Screen.WHITE, Screen.BLACK);
 		screen.printText();
-		ci.readKey();
+		if(awaitUserAcknowledge) ci.readKey();
 	}
 	
 	@Override

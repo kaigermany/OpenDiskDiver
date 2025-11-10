@@ -23,7 +23,7 @@ public interface UI {
 	void onDiskCopyStateUpdate(DiskCopyState state);
 	
 	//prints info text to user and should await acknowledge signal before return.
-	void showInfo(String[] text);
+	void showInfo(String[] text, boolean awaitUserAcknowledge);
 	
 	//allows GUI-specific implementations of a sector-inspector.
 	//void sectorInspector(ReadableSource source);

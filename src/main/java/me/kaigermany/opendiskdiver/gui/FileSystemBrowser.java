@@ -251,7 +251,7 @@ public class FileSystemBrowser {
 						"finished writing " + files.size() + " files.",
 						"bytes written: " + bytesWritten,
 						state.getUnreadableSectorCount() == 0 ? "No invalid files detected." : ("Found " + state.getUnreadableSectorCount() + " invalid files!")
-				});
+				}, true);
 			}break;
 			case 1: default: return;
 		}

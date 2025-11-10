@@ -221,7 +221,7 @@ public class Main {
 			ui.showInfo(new String[]{
 					"finished writing " + reader.numSectors() + " sectors.",
 					state.getUnreadableSectorCount() == 0 ? "No invalid sectors detected." : ("Found " + state.getUnreadableSectorCount() + " invalid sectors!")
-			});
+			}, true);
 		}
 	}
 	
@@ -356,7 +356,7 @@ public class Main {
 					
 					
 					//text.add("findLastValidSector() -> " + findLastValidSector(source));
-					ui.showInfo(text.toArray(new String[text.size()]));
+					ui.showInfo(text.toArray(new String[text.size()]), true);
 					break;
 				}
 				case 3:{
