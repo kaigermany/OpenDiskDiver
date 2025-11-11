@@ -1,52 +1,36 @@
 package me.kaigermany.opendiskdiver.analysis;
 
 import java.io.ByteArrayOutputStream;
-import java.util.ArrayList;
+import java.util.function.BiConsumer;
 
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 
 public class FatEntryScanner implements Scanner {
 	private byte[] lastSector;
 	@Override
-	public void scan(byte[] nextSector, long sectorOffset, ArrayList<String> log) {
-		scan(nextSector, lastSector, sectorOffset, log);
+	public void scan(byte[] nextSector, long sectorOffset, BiConsumer<Scanner, String> logger) {
+		scan(nextSector, lastSector, sectorOffset, logger);
 		lastSector = nextSector.clone();
 	}
 	
-	private static void scan(byte[] nextSector, byte[] lastSector, long sectorOffset, ArrayList<String> logOutput) {
-
+	private void scan(byte[] nextSector, byte[] lastSector, long sectorOffset, BiConsumer<Scanner, String> logger) {
 		for(int pos=0; pos<nextSector.length; pos += 32){
-			if(isHerachieDirEntry(nextSector, pos)){
-				@SuppressWarnings("unused")
-				boolean isParent = nextSector[pos + 1] == '.';
-				//if !parent then its the current dir.
-				//System.out.println("isParent: " + isParent);
-			} else if (isValidEntry(nextSector, pos)) {
-				//System.out.println((block[pos + 13] & 0xFF) + " -> " + ChkSum(block, pos));
+			if(isHerachieDirEntry(nextSector, pos)) continue;
+			if (isValidEntry(nextSector, pos)) {
 				StringBuilder sb = new StringBuilder();
 				ByteArrayOutputStream nameEntriesRecorder = new ByteArrayOutputStream(2048);
-				//int crc = block[pos + 13] & 0xFF;
 				int crc = ChkSum(nextSector, pos);
 				if(findAllNameExtensions(nextSector, lastSector, pos, crc, 1, sb, nameEntriesRecorder)){
 					if(testNameBoundries(sb)){
-						//System.out.println("name: " + sb);
-						//DumpUtils.binaryDump(nameEntriesRecorder.toByteArray());
 						int fileIndex = ((nextSector[pos + 21] & 0xFF) << 24) | ((nextSector[pos + 20] & 0xFF) << 16)
 								| ((nextSector[pos + 27] & 0xFF) << 8) | (nextSector[pos + 26] & 0xFF);
 						int fileSize = ((nextSector[pos + 31] & 0xFF) << 24) | ((nextSector[pos + 30] & 0xFF) << 16)
 								| ((nextSector[pos + 29] & 0xFF) << 8) | (nextSector[pos + 28] & 0xFF);
 						
-						//indexToLengthMap.put((long)fileIndex, (long)fileSize);
-						//System.out.println("name: " + sb + " \t\t fileIndex="+fileIndex+",fileSize="+fileSize);
-						//System.out.println(Integer.toHexString(fileIndex) + "   " + Integer.toHexString(fileSize));
-						
-						logOutput.add("#"+(logOutput.size()+1)+" [FAT ENTRY] Sector="+sectorOffset+", byte="+pos+", FAT-Index="+fileIndex+", fileSize="+fileSize+", name='"+sb+"'");
+						logger.accept(this, "Sector="+sectorOffset+", byte="+pos+", FAT-Index="+fileIndex+", fileSize="+fileSize+", name='"+sb+"'");
 					} else {
 						System.out.println("testNameBoundries() -> false.");
 					}
-				} else {
-					//System.out.println("findAllNameExtensions() -> false.");
-					//DumpUtils.binaryDump(nameEntriesRecorder.toByteArray());
 				}
 			}
 		}

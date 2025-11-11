@@ -3,8 +3,8 @@ package me.kaigermany.opendiskdiver;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 import me.kaigermany.opendiskdiver.analysis.FatEntryScanner;
@@ -423,7 +423,14 @@ public class Main {
 			"begin analyze " + source.numSectors() + " sectors...",
 		}, false);
 		
-		ArrayList<String> log = new ArrayList<>(1024);
+		final ArrayList<String> log = new ArrayList<>(1024);
+		BiConsumer<Scanner, String> logCallback = new BiConsumer<Scanner, String>() {
+			@Override
+			public void accept(Scanner scanner, String msg) {
+				msg = "#" + (log.size() + 1) + " [" + scanner.getClass().getTypeName() + "] " + msg;
+				log.add(msg);
+			}
+		};
 		ArrayList<Scanner> scannerList = new ArrayList<>();
 		scannerList.add(new FatEntryScanner());
 		
@@ -434,11 +441,11 @@ public class Main {
 			source.readSector(offset, buffer);
 			
 			for(Scanner scanner : scannerList){
-				scanner.scan(buffer, offset, log);
+				scanner.scan(buffer, offset, logCallback);
 			}
 			
 			long t = System.currentTimeMillis();
-			if(t - 1000 >= lastRedraw){
+			if(t - 250 >= lastRedraw){
 				lastRedraw = t;
 				int maxSize = Math.min(10, log.size());
 				String[] consoleMessage = new String[maxSize + 1];
