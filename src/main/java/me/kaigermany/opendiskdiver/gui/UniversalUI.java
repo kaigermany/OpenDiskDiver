@@ -39,10 +39,10 @@ public class UniversalUI implements UI {
 		int index = CmdGui.listSelectBlocking(list);
 		if(index == selectImgIndex){
 			File file = CmdGui.askForFilePathBlocking();
-			return new ZipFileReader(file);
+			return new ImageFileReader(file);
 		} else if(index == selectZipIndex) {
 			File file = CmdGui.askForFilePathBlocking();
-			return new ImageFileReader(file);
+			return new ZipFileReader(file);
 		} else {
 			return drives.get(index).openReader();
 		}
