@@ -14,6 +14,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 import me.kaigermany.opendiskdiver.analysis.FatEntryScanner;
+import me.kaigermany.opendiskdiver.analysis.FileHeaderScanner;
 import me.kaigermany.opendiskdiver.analysis.Scanner;
 import me.kaigermany.opendiskdiver.data.Reader;
 import me.kaigermany.opendiskdiver.data.partition.Partition;
