@@ -36,7 +36,6 @@ import me.kaigermany.opendiskdiver.utils.Utils;
 // https://www.grc.com/srrecovery.htm
 // http://web.archive.org/web/20190311160549/http://www.forensicswiki.org/wiki/Carving
 
-
 public class Main {
 	public static void main(String[] args) {
 		final UI ui = createUI(false);
@@ -83,22 +82,63 @@ public class Main {
 		}
 	}
 	
-	private static void driveOptions(UI ui, ReadableSource source) {
+	private static void driveOptions(UI ui, final ReadableSource source) {
 		while(true){
 			int id = ui.cooseFromList("Please coose your operation mode:", new String[]{
-					"Anaylzer Mode",	//call classic parsers.
-					"Copy drive",		//allow disk copy tasks.
+					"Select specific partition",
+					"Inspect sectors",
+					"Show partition table details",
+					"Enter analyzer-mode",
+					"Copy drive",
 					"Exit"
 			});
 			try{
 				switch (id) {
 					case 0:
-						analyzeSource(source, ui);
-						continue;
-					case 1:
+						ReadableSource partition = selectPartition(source, ui);
+						analyzePartition(partition, ui);
+						break;
+					case 1: {
+						//ui.sectorInspector(source);
+						ui.pagedTextViewer(source.numSectors(), new Function<Long, String[]>() {
+							@Override
+							public String[] apply(Long sector) {
+								byte[] buffer = new byte[512];
+								boolean success;
+								try{
+									source.readSector(sector.longValue(), buffer);
+									success = true;
+								}catch(IOException e){
+									e.printStackTrace();
+									success = false;
+								}
+								
+								String text = "Sector #" + sector.toString() + ":\r\n";
+								if(success){
+									text += DumpUtils.binaryDumpToString(buffer);
+								} else {
+									text += "FAILED TO READ SECTOR!";
+								}
+								
+								return text.split("\r\n");
+							}
+						});
+						
+						break;
+					}
+					case 2: {
+						ArrayList<String> text = buildPartitionInfoText(source);
+						ui.showInfo(text.toArray(new String[text.size()]), true);
+						break;
+					}
+					case 3:{
+						diskAnalyzerMode(source, ui);
+						break;
+					}
+					case 4:
 						CopyFunction.copySource(source, ui);
 						continue;
-					case 2:
+					case 5:
 						return;
 				}
 			} catch (Exception e) {
@@ -107,16 +147,71 @@ public class Main {
 		}
 	}
 	
+	private static ArrayList<String> buildPartitionInfoText(ReadableSource source) throws IOException {
+		ArrayList<String> text = new ArrayList<>();
+		ArrayList<Partition> partitions = new PartitionReader(source).getPartitions();
+		boolean isGPT = partitions.get(0).isGPT;
+		text.add("Partition Format: " + (isGPT ? "GPT" : "MBR"));
+		text.add("Sectors available: " + source.numSectors());
+		{
+			long usedSectors = 1 + (isGPT ? 33*2 : 0);
+			for(Partition p : partitions){
+				usedSectors += p.len;
+			}
+			text.add("Sectors used: " + usedSectors);
+			text.add("Sectors free: " + (source.numSectors() - usedSectors));
+		}
+		
+		text.add("");
+		
+		//build text as table
+		ArrayList<String[]> tableViewBuilder = new ArrayList<>();
+		tableViewBuilder.add(new String[]{"offset", "size", "type"});
+		if(isGPT){
+			tableViewBuilder.add(new String[]{"0", "+1", "Protective MBR Partition Table"});
+			tableViewBuilder.add(new String[]{"1", "+33", "GPT Partition Table"});
+		} else {
+			tableViewBuilder.add(new String[]{"0", "+1", "MBR Partition Table"});
+		}
+		long pos = isGPT ? 34 : 1;
+		long endPos = source.numSectors() - (isGPT ? 33 : 0);
+		Iterator<Partition> it = partitions.iterator();
+		Partition nextPartition = it.next();
+		int partitionIndex = 0;
+		while(pos < endPos){
+			long nextPartitionOffset = nextPartition != null ? nextPartition.offset : endPos;
+			if(pos != nextPartitionOffset){
+				long len = nextPartitionOffset - pos;
+				tableViewBuilder.add(new String[]{String.valueOf(pos), "+" + len, "[Free Space]"});
+				pos = nextPartitionOffset;
+				continue;
+			}
+			System.out.println(nextPartition);
+			partitionIndex++;
+			tableViewBuilder.add(new String[]{String.valueOf(nextPartition.offset),
+					"+" + nextPartition.len, "Partition " + partitionIndex});
+			pos = nextPartition.offset + nextPartition.len;
+			nextPartition = it.hasNext() ? it.next() : null;
+		}
+		if(isGPT){
+			tableViewBuilder.add(new String[]{String.valueOf(endPos), "+33", "GPT Backup Table"});
+		}
+
+		
+		for(String line : Utils.renderStylizedTable("Disk Layout", tableViewBuilder, null)){
+			text.add(line);
+		}
+		//text.add("findLastValidSector() -> " + findLastValidSector(source));
+		return text;
+	}
+	
 	
 	private static ReadableSource selectPartition(ReadableSource diskSource, UI ui) throws IOException {
 		ArrayList<Partition> partitions = new PartitionReader(diskSource).getPartitions();
 		if(partitions.size() == 0){
 			ui.cooseFromList("Cant read Partition table.", new String[]{"Select whole drive."});
 			return diskSource;
-		//} else if(partitions.size() == 1){
-		//	return partitions.get(0).source;
 		} else {
-			
 			String[] list = new String[partitions.size()];
 			for(int i=0; i<list.length; i++){
 				Partition p = partitions.get(i);
@@ -129,121 +224,6 @@ public class Main {
 		}
 	}
 	
-	private static void analyzeSource(final ReadableSource source, UI ui) throws IOException {
-		ArrayList<Partition> partitions = new PartitionReader(source).getPartitions();
-		if(partitions.size() == 0){
-			analyzePartition(source, ui);
-		}
-		while(true){
-			switch( ui.cooseFromList("Please select a analyze method:", new String[]{
-					"Select specific partition",
-					"Inspect sectors",
-					"Show partition table details",
-					"Enter analyzer-mode",
-					"Back"
-			}) ){
-				case 0:{
-					ReadableSource partition = selectPartition(source, ui);
-					analyzePartition(partition, ui);
-					break;
-				}
-				case 1: {
-					//ui.sectorInspector(source);
-					ui.pagedTextViewer(source.numSectors(), new Function<Long, String[]>() {
-						@Override
-						public String[] apply(Long sector) {
-							byte[] buffer = new byte[512];
-							boolean success;
-							try{
-								source.readSector(sector.longValue(), buffer);
-								success = true;
-							}catch(IOException e){
-								e.printStackTrace();
-								success = false;
-							}
-							
-							String text = "Sector #" + sector.toString() + ":\r\n";
-							if(success){
-								text += DumpUtils.binaryDumpToString(buffer);
-							} else {
-								text += "FAILED TO READ SECTOR!";
-							}
-							
-							return text.split("\r\n");
-						}
-					});
-					
-					break;
-				}
-				case 2: {
-					ArrayList<String> text = new ArrayList<>();
-					boolean isGPT = partitions.get(0).isGPT;
-					text.add("Partition Format: " + (isGPT ? "GPT" : "MBR"));
-					text.add("Sectors available: " + source.numSectors());
-					{
-						long usedSectors = 1 + (isGPT ? 33*2 : 0);
-						for(Partition p : partitions){
-							usedSectors += p.len;
-						}
-						text.add("Sectors used: " + usedSectors);
-						text.add("Sectors free: " + (source.numSectors() - usedSectors));
-					}
-					
-					text.add("");
-					
-					//build text as table
-					ArrayList<String[]> tableViewBuilder = new ArrayList<>();
-					tableViewBuilder.add(new String[]{"offset", "size", "type"});
-					if(isGPT){
-						tableViewBuilder.add(new String[]{"0", "+1", "Protective MBR Partition Table"});
-						tableViewBuilder.add(new String[]{"1", "+33", "GPT Partition Table"});
-					} else {
-						tableViewBuilder.add(new String[]{"0", "+1", "MBR Partition Table"});
-					}
-					long pos = isGPT ? 34 : 1;
-					long endPos = source.numSectors() - (isGPT ? 33 : 0);
-					Iterator<Partition> it = partitions.iterator();
-					Partition nextPartition = it.next();
-					int partitionIndex = 0;
-					while(pos < endPos){
-						long nextPartitionOffset = nextPartition != null ? nextPartition.offset : endPos;
-						if(pos != nextPartitionOffset){
-							long len = nextPartitionOffset - pos;
-							tableViewBuilder.add(new String[]{String.valueOf(pos), "+" + len, "[Free Space]"});
-							pos = nextPartitionOffset;
-							continue;
-						}
-						System.out.println(nextPartition);
-						partitionIndex++;
-						tableViewBuilder.add(new String[]{String.valueOf(nextPartition.offset),
-								"+" + nextPartition.len, "Partition " + partitionIndex});
-						pos = nextPartition.offset + nextPartition.len;
-						nextPartition = it.hasNext() ? it.next() : null;
-					}
-					if(isGPT){
-						tableViewBuilder.add(new String[]{String.valueOf(endPos), "+33", "GPT Backup Table"});
-					}
-
-					
-					for(String line : Utils.renderStylizedTable("Disk Layout", tableViewBuilder, null)){
-						text.add(line);
-					}
-					
-					
-					//text.add("findLastValidSector() -> " + findLastValidSector(source));
-					ui.showInfo(text.toArray(new String[text.size()]), true);
-					break;
-				}
-				case 3:{
-					diskAnalyzerMode(source, ui);
-					break;
-				}
-				case 4:{
-					return;
-				}
-			}
-		}
-	}
 	
 	private static void analyzePartition(ReadableSource partitionSource, UI ui) throws IOException {
 		byte[] buffer = new byte[512];
