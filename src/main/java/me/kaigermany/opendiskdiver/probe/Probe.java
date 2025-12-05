@@ -10,6 +10,8 @@ import me.kaigermany.opendiskdiver.data.ntfs.NtfsReader;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 
 public class Probe {
+	private static ArrayList<ProbeFunction> probeFunctions = new ArrayList<ProbeFunction>();
+
 	static{
 		Probe.regiterProbeTester(new ProbeFunction() {
 			@Override
@@ -65,8 +67,6 @@ public class Probe {
 		});
 	}
 	
-	private static ArrayList<ProbeFunction> probeFunctions = new ArrayList<ProbeFunction>();
-
 	public static void regiterProbeTester(ProbeFunction func){
 		probeFunctions.add(func);
 	}
