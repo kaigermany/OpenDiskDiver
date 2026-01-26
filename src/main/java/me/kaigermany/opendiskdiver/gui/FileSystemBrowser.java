@@ -129,7 +129,7 @@ public class FileSystemBrowser {
 		Node rootnode = buildTree(files);
 		
 		while(true){
-			switch (ui.cooseFromList("Files: " + files.size() + " What do you want do do now?", new String[]{
+			switch (ui.chooseFromList("Files: " + files.size() + " What do you want do do now?", new String[]{
 					"Visit file list",
 					"Visit directories",
 					"Dump files as sorted list",
@@ -155,7 +155,7 @@ public class FileSystemBrowser {
 
 	private static void dumpSortedFiles(UI ui, List<FileEntry> files){
 		Comparator<FileEntry> sorter;
-		switch (ui.cooseFromList("How you would like to sort the files?", new String[]{
+		switch (ui.chooseFromList("How you would like to sort the files?", new String[]{
 				"Sort by absolute path",
 				"Sort by name",
 				"Sort by time",
@@ -201,7 +201,7 @@ public class FileSystemBrowser {
 	}
 	
 	private static void exportAllFiles(UI ui, FileSystem fs, List<FileEntry> files) {
-		switch (ui.cooseFromList("Export " + files.size() + " files as *.zip?", new String[]{
+		switch (ui.chooseFromList("Export " + files.size() + " files as *.zip?", new String[]{
 				"Yes",
 				"Abort"
 		})) {

@@ -21,7 +21,7 @@ public class WindowsUI implements UI {
 	private static Screen screen = new Screen(1, 1, ci);
 
 	@Override
-	public int cooseFromList(String title, String[] entries) {
+	public int chooseFromList(String title, String[] entries) {
 		int maxWidth = title.length();
 		for(String s : entries) maxWidth = Math.max(maxWidth, s.length());
 		screen.resize(maxWidth + 4, entries.length + 1);
@@ -57,7 +57,7 @@ public class WindowsUI implements UI {
 	}
 
 	@Override
-	public ReadableSource cooseSource() throws IOException {
+	public ReadableSource chooseSource() throws IOException {
 		ArrayList<DriveInfo> drives = DriveListProvider.listDrives();
 		System.out.println(drives.toString().replace("}, {", "},\n{"));
 		final int numSlots = drives.size() + SharedText.pseudoSources.length;

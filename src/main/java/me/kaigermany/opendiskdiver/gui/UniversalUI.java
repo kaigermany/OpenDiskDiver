@@ -18,14 +18,14 @@ import me.kaigermany.opendiskdiver.utils.Utils;
 
 public class UniversalUI implements UI {
 	@Override
-	public int cooseFromList(String title, String[] entries) {
+	public int chooseFromList(String title, String[] entries) {
 		System.out.println();
 		System.out.println(title);
 		return CmdGui.listSelectBlocking(entries);
 	}
 
 	@Override
-	public ReadableSource cooseSource() throws IOException {
+	public ReadableSource chooseSource() throws IOException {
 		ArrayList<DriveInfo> drives = DriveListProvider.listDrives();
 		String[] list = new String[drives.size() + 2];
 		for(int i=0; i<drives.size(); i++){

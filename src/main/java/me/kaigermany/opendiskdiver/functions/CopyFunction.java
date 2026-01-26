@@ -13,7 +13,7 @@ import me.kaigermany.opendiskdiver.writer.ZipFileWriter;
 
 public class CopyFunction {
 	public static void copySource(ReadableSource source, UI ui) throws IOException {
-		int type = ui.cooseFromList("Please select an output file type:", new String[]{
+		int type = ui.chooseFromList("Please select an output file type:", new String[]{
 				".img - raw disk image",
 				".zip - zip file with blocks of compressed sectors",
 				"Abort"
@@ -35,7 +35,7 @@ public class CopyFunction {
 		while(true){
 			outFile = ui.saveAs();
 			if(outFile.exists()){
-				int answer = ui.cooseFromList("File already exists!", new String[]{
+				int answer = ui.chooseFromList("File already exists!", new String[]{
 						"Rename it",
 						"continue and override it",
 						"Abort"
@@ -56,7 +56,7 @@ public class CopyFunction {
 					+ Utils.toHumanReadableFileSize(bytesNeeded) + ", avaliable: "
 					+ Utils.toHumanReadableFileSize(freeBytesOnTargetDisk) + " -> missing: "
 					+ Utils.toHumanReadableFileSize(bytesNeeded - freeBytesOnTargetDisk) + " - CONTINUE?";
-			int answer = ui.cooseFromList(title, new String[]{
+			int answer = ui.chooseFromList(title, new String[]{
 					"No",
 					"Yes"
 			});

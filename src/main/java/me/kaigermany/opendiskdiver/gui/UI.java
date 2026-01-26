@@ -8,13 +8,13 @@ import me.kaigermany.opendiskdiver.reader.ReadableSource;
 
 public interface UI {
 	//returns a number between 0 .. (entries.length - 1) in any case.
-	int cooseFromList(String title, String[] entries);
+	int chooseFromList(String title, String[] entries);
 	
 	//user has to enter an output file, File class will be returned.
 	File saveAs();
 	
 	//let the user select a mounted drive.
-	ReadableSource cooseSource() throws IOException;
+	ReadableSource chooseSource() throws IOException;
 	
 	//closes the gui instance.
 	void close();

@@ -36,7 +36,7 @@ public class Main {
 	public static void main(String[] args) {
 		final UI ui = createUI(false);
 		while(true){
-			int id = ui.cooseFromList("Welcome! Please coose your operation mode:", new String[]{
+			int id = ui.chooseFromList("Welcome! Please choose your operation mode:", new String[]{
 					"Anaylze a drive",
 					"Compare Drives or Images",
 					"Exit"
@@ -44,12 +44,12 @@ public class Main {
 			try{
 				switch (id) {
 					case 0:
-						driveOptions(ui, ui.cooseSource());
+						driveOptions(ui, ui.chooseSource());
 						continue;
 					case 1:
 						{
-							ReadableSource source1 = ui.cooseSource();
-							ReadableSource source2 = ui.cooseSource();
+							ReadableSource source1 = ui.chooseSource();
+							ReadableSource source2 = ui.chooseSource();
 							ui.showInfo(new String[]{
 									"Select an output file for the log-dump."
 							}, false);
@@ -80,7 +80,7 @@ public class Main {
 	
 	private static void driveOptions(UI ui, final ReadableSource source) {
 		while(true){
-			int id = ui.cooseFromList("Please coose your operation mode:", new String[]{
+			int id = ui.chooseFromList("Please choose your operation mode:", new String[]{
 					"Select specific partition",
 					"Inspect sectors",
 					"Show partition table details",
@@ -205,7 +205,7 @@ public class Main {
 	private static ReadableSource selectPartition(ReadableSource diskSource, UI ui) throws IOException {
 		ArrayList<Partition> partitions = new PartitionReader(diskSource).getPartitions();
 		if(partitions.size() == 0){
-			ui.cooseFromList("Cant read Partition table.", new String[]{"Select whole drive."});
+			ui.chooseFromList("Cant read Partition table.", new String[]{"Select whole drive."});
 			return diskSource;
 		} else {
 			String[] list = new String[partitions.size()];
@@ -214,7 +214,7 @@ public class Main {
 				list[i] = "["+p.offset+" .. "+(p.offset+p.len-1)+"   '"+p.name+"']";
 			}
 			String type = partitions.get(0).isGPT ? "GPT" : "MBR";
-			int selected = ui.cooseFromList("Please select a partition: (type: " + type + ")", list);
+			int selected = ui.chooseFromList("Please select a partition: (type: " + type + ")", list);
 			return partitions.get(selected).source;
 			
 		}
@@ -227,7 +227,7 @@ public class Main {
 		boolean hasNoFilesystem = Probe.detectType(buffer).getSortedResults().isEmpty();
 		buffer = null;
 		if(hasNoFilesystem){
-			int continueAnalyze = ui.cooseFromList("Unable to detect a valid Filesystem. Enter analyzer-mode?", new String[]{
+			int continueAnalyze = ui.chooseFromList("Unable to detect a valid Filesystem. Enter analyzer-mode?", new String[]{
 					"Yes",
 					"Abort and return"
 			});
