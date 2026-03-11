@@ -58,7 +58,16 @@ public class FileHeaderScanner implements Scanner {
 				break;
 			}
 			case 'M':{
-				if(sector[1] == 'Z') return "EXE";
+				if(sector[1] == 'Z') {
+					int PEHeaderOffset = readIntLE(sector, 60);
+					if(PEHeaderOffset > 0 && PEHeaderOffset + 4 < sector.length){
+						if(sector[PEHeaderOffset] == 'P' && sector[PEHeaderOffset+1] == 'E' 
+								&& sector[PEHeaderOffset+2] == 0 && sector[PEHeaderOffset+3] == 0){
+							return "EXE";
+						}
+					}
+					
+				}
 				break;
 			}
 			case '%':{
@@ -80,5 +89,14 @@ public class FileHeaderScanner implements Scanner {
 		}
 		
 		return null;
+	}
+	
+	private static int readIntLE(byte[] buf, int offset){
+		if(offset + 4 > buf.length) return 0;
+		  int value = 0;
+		  for(int i=0; i<4; i++){
+		    value |= (buf[offset + i] & 0xFF) << (i * 8);
+		  }
+		  return value;
 	}
 }
