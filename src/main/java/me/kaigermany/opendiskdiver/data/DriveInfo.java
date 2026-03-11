@@ -4,6 +4,7 @@ import java.io.FileNotFoundException;
 
 import me.kaigermany.opendiskdiver.reader.DirectDiskReader;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
+import me.kaigermany.opendiskdiver.writer.Writer;
 
 public class DriveInfo {
 	public final String name;
@@ -27,5 +28,10 @@ public class DriveInfo {
 	@Override
 	public String toString() {
 		return "{name="+name+",path="+path+",size="+size+"}";
+	}
+
+	public Writer openWriter() {
+		//TODO 		return new DirectDiskWriter(path, size);
+		return null;
 	}
 }

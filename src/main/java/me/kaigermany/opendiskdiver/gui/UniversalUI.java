@@ -15,6 +15,9 @@ import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.reader.ZipFileReader;
 import me.kaigermany.opendiskdiver.utils.SharedText;
 import me.kaigermany.opendiskdiver.utils.Utils;
+import me.kaigermany.opendiskdiver.writer.ImageFileWriter;
+import me.kaigermany.opendiskdiver.writer.Writer;
+import me.kaigermany.opendiskdiver.writer.ZipFileWriter;
 
 public class UniversalUI implements UI {
 	@Override
@@ -45,6 +48,50 @@ public class UniversalUI implements UI {
 			return new ZipFileReader(file);
 		} else {
 			return drives.get(index).openReader();
+		}
+	}
+	
+	public Writer chooseWriter() throws IOException {
+		return chooseWriterImpl(false);
+	}
+	//TODO
+	public Writer chooseWriterImpl(boolean showHardwareDrives) throws IOException {
+		String[] list;
+		ArrayList<DriveInfo> drives = null;
+		if(showHardwareDrives){
+			list = new String[1 + 2];
+			list[0] = "[Reveal Harddrives]";
+		} else {
+			drives = DriveListProvider.listDrives();
+			list = new String[drives.size() + 2];
+			for(int i=0; i<drives.size(); i++){
+				DriveInfo drive = drives.get(i);
+				list[i] = Utils.toHumanReadableFileSize(drive.size) + " \t " + drive.name;
+			}
+		}
+		int selectImgIndex = list.length - 2;
+		int selectZipIndex = list.length - 1;
+		list[selectImgIndex] = SharedText.pseudoSources[0];
+		list[selectZipIndex] = SharedText.pseudoSources[1];
+		int index = CmdGui.listSelectBlocking(list);
+		
+		if(!showHardwareDrives && index == 0){
+			index = this.chooseFromList("Reveal Harddrives? This option allows SERIOUS disk damage!", new String[]{"Abboard", "Reveal all Harddrives"});
+			return chooseWriterImpl(index == 1);
+		}
+		
+		if(index == selectImgIndex){
+			File file = CmdGui.askForFilePathBlocking();
+			Writer w = new ImageFileWriter();
+			w.create(file, null);
+			return w;
+		} else if(index == selectZipIndex) {
+			File file = CmdGui.askForFilePathBlocking();
+			Writer w = new ZipFileWriter();
+			w.create(file, null);
+			return w;
+		} else {
+			return drives.get(index).openWriter();
 		}
 	}
 
