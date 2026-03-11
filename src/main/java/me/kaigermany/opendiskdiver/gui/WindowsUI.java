@@ -116,8 +116,8 @@ public class WindowsUI implements UI {
 		selectedSlot -= drives.size();
 		
 		switch(selectedSlot){
-			case 0: return new ImageFileReader(OpenFileDialog.userOpenFile(SharedText.pseudoSources[0], null));
-			case 1: return new ZipFileReader(OpenFileDialog.userOpenFile(SharedText.pseudoSources[1], null));
+			case 0: return new ImageFileReader(OpenFileDialog.userOpenFile(SharedText.pseudoSources[0]));
+			case 1: return new ZipFileReader(OpenFileDialog.userOpenFile(SharedText.pseudoSources[1]));
 		}
 		
 		return null;//impossible to reach, but the compiler want to see it here :)
