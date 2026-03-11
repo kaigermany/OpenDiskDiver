@@ -9,6 +9,20 @@ import java.io.File;
 import javax.swing.JFileChooser;
 
 public class OpenFileDialog {
+	private static File lastActiveDirectory;
+	
+	public static File userOpenFile(String title){
+		File f = userFileDialog(title, false, lastActiveDirectory);
+		lastActiveDirectory = f.getParentFile();
+		return f;
+	}
+	
+	public static File userSaveFile(String title){
+		File f = userFileDialog(title, true, lastActiveDirectory);
+		lastActiveDirectory = f.getParentFile();
+		return f;
+	}
+	
 	public static File userOpenFile(String title, File defaultSelection){
 		return userFileDialog(title, false, defaultSelection);
 	}
