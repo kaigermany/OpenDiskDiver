@@ -1,11 +1,15 @@
 package me.kaigermany.opendiskdiver.gui;
 
+import java.util.ArrayList;
+
 public class DiskCopyState {
 	private final long numSectors;
 	private long currentSector;
 	private long unreadableSectorCount;
 	
 	private Object uiPrivateContext;
+	
+	private ArrayList<Long> unreadableSectors = new ArrayList<>();
 	
 	// ----- Handler ------
 	
@@ -44,5 +48,9 @@ public class DiskCopyState {
 	
 	public <T> T getUiPrivateContext(Class<T> clazz){
 		return clazz.cast(this.uiPrivateContext);
+	}
+
+	public void markSectorAsUnreadable(long position) {
+		unreadableSectors.add(position);
 	}
 }
