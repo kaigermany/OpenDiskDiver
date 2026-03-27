@@ -21,6 +21,11 @@ public class ImageFileWriter implements Writer {
 	}
 
 	@Override
+	public void writePlaceholderSector() throws IOException {
+		write(new byte[512], 512);
+	}
+
+	@Override
 	public void close() throws IOException {
 		outputStream.close();
 		outputStream = null;

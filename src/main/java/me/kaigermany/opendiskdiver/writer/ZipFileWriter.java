@@ -15,6 +15,7 @@ public class ZipFileWriter implements Writer {
 	private byte[] writeBuffer;
 	private int writePointer = 0;
 	private long writtenSectorOffset = 0;
+	private StringBuilder damagedSectorRecorder = null;
 	
 	public ZipFileWriter(){}
 	
@@ -44,8 +45,25 @@ public class ZipFileWriter implements Writer {
 	}
 
 	@Override
+	public void writePlaceholderSector() throws IOException {
+		if(damagedSectorRecorder == null) damagedSectorRecorder = new StringBuilder();
+		damagedSectorRecorder.append(writtenSectorOffset + (writePointer / 512)).append("\r\n");
+		write(new byte[512], 512);
+	}
+
+	@Override
 	public void close() throws IOException {
+		flushBuffer();
+		
 		zos.flush();
+		
+		if(damagedSectorRecorder != null){
+			zos.putNextEntry(new ZipEntry("invalid_sectors.txt"));
+			zos.write(damagedSectorRecorder.toString().getBytes());
+			damagedSectorRecorder = null;
+			zos.closeEntry();
+		}
+		
 		zos.close();
 		zos = null;
 	}

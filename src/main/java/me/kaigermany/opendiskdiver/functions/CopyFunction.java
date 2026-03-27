@@ -101,7 +101,8 @@ public class CopyFunction {
 						}catch(IOException sectorReadError){
 							//state.markSectorAsUnreadable(pos + offset);
 							state.incrUnreadableSectorCount();
-							writer.write(dummyBuffer, 512);
+							//writer.write(dummyBuffer, 512);
+							writer.writePlaceholderSector();
 						}
 					}
 					pos += numSectorsToRead;
