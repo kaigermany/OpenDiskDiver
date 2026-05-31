@@ -30,13 +30,14 @@ public class NtfsReader implements Reader, FileSystem {
 	
 	public NtfsConfig config;
 	public HashMap<String, NtfsNode> fileMap;
+	public boolean tryParseDeletedNodes = false;
 	
 	public NtfsReader(){}
 	
 	public void read(ReadableSource source) throws IOException {
 		config = new NtfsConfig(source);
 		System.out.println(config);
-		NtfsNode[] nodes = readMFT(source);
+		NtfsNode[] nodes = readMFT(source, tryParseDeletedNodes);
 		fileMap = convertNodesToFiles(nodes);
 		/*
 		for(String f : fileMap.keySet()){
@@ -124,7 +125,7 @@ public class NtfsReader implements Reader, FileSystem {
 	}
 	
 	
-	public NtfsNode[] readMFT(ReadableSource source) throws IOException {
+	public NtfsNode[] readMFT(ReadableSource source, boolean tryParseDeletedNodes) throws IOException {
 		NtfsStream mftStream = null;
 		NtfsNode MFTnode = null;
 		{//step 1: read MFT entry
@@ -132,11 +133,11 @@ public class NtfsReader implements Reader, FileSystem {
 			byte[] mftEntryBytes = new byte[ (int)MathUtils.clampExp(config.BytesPerMftRecord, 512) ]; //align towards 512
 			source.readSectors(config.MFT_Offset * config.clusterSize / 512, mftEntryBytes.length / 512, mftEntryBytes);
 			
-			RawNtfsNode temp = new RawNtfsNode(mftEntryBytes, config);
+			RawNtfsNode temp = new RawNtfsNode(mftEntryBytes, config, tryParseDeletedNodes);
 			NtfsNode node = new NtfsNode(0, config, source);
-			if(!ProcessMftRecordOfMFT(node, temp.getData(), (int)config.BytesPerMftRecord, null, config, source, 0, null)){
+			if(!ProcessMftRecordOfMFT(node, temp.getData(), (int)config.BytesPerMftRecord, null, config, source, 0, null, tryParseDeletedNodes)){
 				mftStream = node.SearchStream(AttributeType_AttributeData);
-				node = ProcessMftRecord(temp.getData(), (int)config.BytesPerMftRecord, mftStream, config, source, 0, null, node);
+				node = ProcessMftRecord(temp.getData(), (int)config.BytesPerMftRecord, mftStream, config, source, 0, null, node, tryParseDeletedNodes);
 			}
 			mftStream = node.SearchStream(AttributeType_AttributeData);
 			System.out.println(node.streams);
@@ -158,7 +159,7 @@ public class NtfsReader implements Reader, FileSystem {
 				byte[] buffer2 = new byte[bytesPerMftRecord];
 		        int l = bis.read(buffer2, 0, bytesPerMftRecord);
 		        if(l != (int)config.BytesPerMftRecord) throw new IOException("Missing data in MFT-Stream: readed only " + l + " bytes, expected " + config.BytesPerMftRecord + " bytes.");
-		        RawNtfsNode node = new RawNtfsNode(buffer2, config);
+		        RawNtfsNode node = new RawNtfsNode(buffer2, config, tryParseDeletedNodes);
 		        if(node.isActiveEntry()){
 		        	rawNodes[nodeIndex] = node;
 		        }
@@ -173,7 +174,9 @@ public class NtfsReader implements Reader, FileSystem {
 			if(rawNode != null && rawNode.isValid(bytesPerMftRecord)){
 				rawNodes[nodeIndex] = null;
 		        
-		        NtfsNode node = nodes[nodeIndex] = ProcessMftRecord(rawNode.getData(), bytesPerMftRecord, mftStream, config, source, nodeIndex, rawNodes, MFTnode);
+		        NtfsNode node = nodes[nodeIndex] = ProcessMftRecord(
+		        		rawNode.getData(), bytesPerMftRecord, mftStream, config, source, nodeIndex, rawNodes, MFTnode, tryParseDeletedNodes
+		        		);
 		        
 		        if(node != null){
 		        	node.isSystemFile = node.Name != null && node.Name.startsWith("$") && node.ParentNodeIndex == 5 && !node.Name.equals("$RECYCLE.BIN");
@@ -185,7 +188,8 @@ public class NtfsReader implements Reader, FileSystem {
 	
 		
 
-	public NtfsNode ProcessMftRecord(byte[] data, int length, NtfsStream MftStream, NtfsConfig config, ReadableSource source, long nodeIndex, RawNtfsNode[] rawNodes, NtfsNode MFTnode) throws IOException {
+	public NtfsNode ProcessMftRecord(byte[] data, int length, NtfsStream MftStream, NtfsConfig config, ReadableSource source,
+			long nodeIndex, RawNtfsNode[] rawNodes, NtfsNode MFTnode, boolean tryParseDeletedNodes) throws IOException {
 		int AttributeOffset = ByteArrayUtils.read16(data, 20);
 		int Flags = ByteArrayUtils.read16(data, 22);
 		
@@ -209,7 +213,7 @@ public class NtfsReader implements Reader, FileSystem {
         }
     	for(byte[] a : attributes) parseAttribute(node, a, MFTnode, rawNodes);
   */      
-        ProcessAttributes(node, data, AttributeOffset, length - AttributeOffset, false, 0, MftStream, config, source, rawNodes);
+        ProcessAttributes(node, data, AttributeOffset, length - AttributeOffset, false, 0, MftStream, config, source, rawNodes, tryParseDeletedNodes);
         
         for(NtfsStream s : node.streams) s.applyFragments();
         
@@ -217,7 +221,8 @@ public class NtfsReader implements Reader, FileSystem {
 	}
 	
 	
-	public boolean ProcessMftRecordOfMFT(NtfsNode node, byte[] data, int length, NtfsStream MftStream, NtfsConfig config, ReadableSource source, long nodeIndex, RawNtfsNode[] rawNodes) throws IOException {
+	public boolean ProcessMftRecordOfMFT(NtfsNode node, byte[] data, int length, NtfsStream MftStream, NtfsConfig config, 
+			ReadableSource source, long nodeIndex, RawNtfsNode[] rawNodes, boolean tryParseDeletedNodes) throws IOException {
 		int AttributeOffset = ByteArrayUtils.read16(data, 20);
 		int Flags = ByteArrayUtils.read16(data, 22);
 		
@@ -230,7 +235,7 @@ public class NtfsReader implements Reader, FileSystem {
         try{
         	//ArrayList<byte[]> attributes = readAttributes(data, AttributeOffset, length, false);
         	//for(byte[] a : attributes) parseAttribute(node, a, node, rawNodes);
-        	ProcessAttributes(node, data, AttributeOffset, length - AttributeOffset, false, 0, MftStream, config, source, rawNodes);
+        	ProcessAttributes(node, data, AttributeOffset, length - AttributeOffset, false, 0, MftStream, config, source, rawNodes, tryParseDeletedNodes);
         }catch(Exception e){
         	success = false;
         }
@@ -272,7 +277,7 @@ public class NtfsReader implements Reader, FileSystem {
         return (ntfsTime / HUNDRED_NANOSECONDS_IN_ONE_MILLISECOND) - NTFS_TO_UNIX_EPOCH_SECONDS;
 	}
 	// https://flatcap.github.io/linux-ntfs/ntfs/attributes/index.html
-	private void parseAttribute(NtfsNode outputNode, byte[] data, NtfsNode MFTnode, RawNtfsNode[] rawNodes) {
+	private void parseAttribute(NtfsNode outputNode, byte[] data, NtfsNode MFTnode, RawNtfsNode[] rawNodes, boolean tryParseDeletedNodes) {
 		final int AttributeFileName = 0x30;
 		final int AttributeData = 0x80;
 
@@ -320,7 +325,7 @@ public class NtfsReader implements Reader, FileSystem {
 					e.printStackTrace();
 				}
 				*/
-				processAttributesList(data, ValueOffset, ValueLength, outputNode, MFTnode, rawNodes);
+				processAttributesList(data, ValueOffset, ValueLength, outputNode, MFTnode, rawNodes, tryParseDeletedNodes);
 			}
 		} else {// nonresident, aka somewhere else then this entry.
 			int offset = 16;
@@ -362,7 +367,7 @@ public class NtfsReader implements Reader, FileSystem {
 						
 						System.out.println("buffer: " + buffer.length);
 						
-						processAttributesList(buffer, 0, (int)DataSize, outputNode, MFTnode, rawNodes);
+						processAttributesList(buffer, 0, (int)DataSize, outputNode, MFTnode, rawNodes, tryParseDeletedNodes);
 						
 					} catch (IOException e) {
 						e.printStackTrace();
@@ -378,7 +383,7 @@ public class NtfsReader implements Reader, FileSystem {
 	}
 	
 	
-	private void processAttributesList(byte[] data, int ValueOffset, int ValueLength, NtfsNode outputNode, NtfsNode MFTnode, RawNtfsNode[] rawNodes){
+	private void processAttributesList(byte[] data, int ValueOffset, int ValueLength, NtfsNode outputNode, NtfsNode MFTnode, RawNtfsNode[] rawNodes, boolean tryParseDeletedNodes){
 		final int AttributeData = 0x80;
 		System.out.println(Arrays.toString(data));
 		ArrayList<byte[]> list = readAttributes(data, ValueOffset, ValueLength, true);
@@ -413,7 +418,7 @@ public class NtfsReader implements Reader, FileSystem {
 	            	nfis.skip(RefInode * config.BytesPerMftRecord);
 	            	byte[] localEntry = new byte[(int)config.BytesPerMftRecord];
 	            	nfis.read(localEntry, 0, localEntry.length);
-	            	rawNode = new RawNtfsNode(localEntry, config);
+	            	rawNode = new RawNtfsNode(localEntry, config, tryParseDeletedNodes);
             	}catch(Exception e){
             		e.printStackTrace();
             		rawNode = null;
@@ -440,7 +445,7 @@ public class NtfsReader implements Reader, FileSystem {
             );
 			*/
             ArrayList<byte[]> attributes = readAttributes(data, AttributeOffset2, (int)config.BytesPerMftRecord - AttributeOffset2, false);//TODO bool==false?
-            for(byte[] attr : attributes) parseAttribute(outputNode, attr, MFTnode, rawNodes);
+            for(byte[] attr : attributes) parseAttribute(outputNode, attr, MFTnode, rawNodes, tryParseDeletedNodes);
 			
 			
 			
@@ -455,7 +460,7 @@ public class NtfsReader implements Reader, FileSystem {
 	}
 
 		private void ProcessAttributes(NtfsNode node, byte[] ptr, int ptr_offset, int BufLength, boolean debug, int depth
-				, NtfsStream MftStream, NtfsConfig config, ReadableSource source, RawNtfsNode[] rawNodes) throws IOException {
+				, NtfsStream MftStream, NtfsConfig config, ReadableSource source, RawNtfsNode[] rawNodes, boolean tryParseDeletedNodes) throws IOException {
 
 			int AttributeOffset = 0;
 			int attribute_Length;
@@ -590,7 +595,7 @@ public class NtfsReader implements Reader, FileSystem {
 	                        node,
 	                        ptr, AttributeOffset+ptr_offset + (residentAttribute.ValueOffset & 0xFFFF),
 	                        residentAttribute.ValueLength,
-	                        depth, MftStream, config, source, rawNodes
+	                        depth, MftStream, config, source, rawNodes, tryParseDeletedNodes
 	                        );
 	            	} else {
 	            		NonResidentAttribute nonResidentAttribute = new NonResidentAttribute(ptr, AttributeOffset+ptr_offset+16);
@@ -604,7 +609,7 @@ public class NtfsReader implements Reader, FileSystem {
 									AttributeOffset + ptr_offset + (nonResidentAttribute.RunArrayOffset & 0xFFFF),
 									attribute_Length - nonResidentAttribute.RunArrayOffset, WantedLength, config, source
 							);
-							ProcessAttributeList(node, buffer, 0, nonResidentAttribute.DataSize, depth + 1, MftStream, config, source, rawNodes);
+							ProcessAttributeList(node, buffer, 0, nonResidentAttribute.DataSize, depth + 1, MftStream, config, source, rawNodes, tryParseDeletedNodes);
         				}
 	            				
 	            	}
@@ -693,7 +698,7 @@ public class NtfsReader implements Reader, FileSystem {
 		
 	    
 	    private void ProcessAttributeList(NtfsNode node, byte[] ptr, int ptr_offset, long bufLength, int depth, 
-	    		NtfsStream MftStream, NtfsConfig config, ReadableSource source, RawNtfsNode[] rawNodes) throws IOException {
+	    		NtfsStream MftStream, NtfsConfig config, ReadableSource source, RawNtfsNode[] rawNodes, boolean tryParseDeletedNodes) throws IOException {
 	        boolean debug = false;
 	    	if(debug) System.out.println("ProcessAttributeList: " + node.Name);
 	    	if(debug) System.out.println("bufLength="+bufLength);
@@ -739,7 +744,7 @@ public class NtfsReader implements Reader, FileSystem {
 	            	nfis.skip(RefInode * config.BytesPerMftRecord);
 	            	byte[] localEntry = new byte[(int)config.BytesPerMftRecord];
 	            	nfis.read(localEntry, 0, localEntry.length);
-	            	rawNode = new RawNtfsNode(localEntry, config);
+	            	rawNode = new RawNtfsNode(localEntry, config, tryParseDeletedNodes);
 	            } else {
 	            	rawNode = rawNodes[(int)RefInode];
 	            }
@@ -757,7 +762,7 @@ public class NtfsReader implements Reader, FileSystem {
 	                node,
 	                buffer, (AttributeOffset2 & 0xFFFF),
 	                (int)config.BytesPerMftRecord - (AttributeOffset2 & 0xFFFF),
-	                debug, depth + 1, MftStream, config, source, rawNodes
+	                debug, depth + 1, MftStream, config, source, rawNodes, tryParseDeletedNodes
 	            );
 	        }
 	        if(debug) System.out.println(">>end");

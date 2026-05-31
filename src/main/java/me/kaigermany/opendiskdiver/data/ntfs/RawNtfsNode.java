@@ -8,13 +8,15 @@ import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 
 public class RawNtfsNode {
 	private byte[] data;
-	
-	public RawNtfsNode(byte[] mftEntryBytes, NtfsConfig config) throws IOException {
+	private final boolean tryParseDeletedNodes;
+	public RawNtfsNode(byte[] mftEntryBytes, NtfsConfig config, boolean tryParseDeletedNodes) throws IOException {
 		fixupRawMftdata(mftEntryBytes, config);
 		this.data = mftEntryBytes;
+		this.tryParseDeletedNodes = tryParseDeletedNodes;
 	}
 	
-	public boolean isActiveEntry() throws IOException {//is node in use?
+	public boolean isActiveEntry() {//is node in use?
+		if(tryParseDeletedNodes) return true;
 		int Flags = ByteArrayUtils.read16(data, 22);
 		return (Flags & 1) == 1;
 	}
@@ -50,7 +52,7 @@ public class RawNtfsNode {
 		int UsaOffset = buffer.asShortBuffer().get() & 0xFFFF;
 		buffer.position(4+2);
 		int UsaCount = buffer.asShortBuffer().get() & 0xFFFF;
-        int increment = (int)config.BytesPerSector >>> 1;
+        int increment = config.BytesPerSector >>> 1;
 
         int Index = increment - 1;
         for (int i = 1; i < UsaCount; i++) {
