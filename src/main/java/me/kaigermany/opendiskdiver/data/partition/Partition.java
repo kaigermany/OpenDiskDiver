@@ -11,12 +11,12 @@ public class Partition {
 	public final ReadableSource source;
 	
 	public Partition(int offset, int len, int type, ReadableSource source) {
-		isGPT = type == 238 && len < 0;
-		this.offset = offset;
-		this.len = len;
+		this.isGPT = type == 238 && len < 0;
+		this.offset = offset & 0xFFFFFFFFL;
+		this.len = len & 0xFFFFFFFFL;
 		this.type = type;
 		this.name = null;
-		this.source = createLimitedReader(source, offset, len);
+		this.source = createLimitedReader(source, this.offset, this.len);
 	}
 
 	public Partition(long offset, long len, String name, ReadableSource source) {
