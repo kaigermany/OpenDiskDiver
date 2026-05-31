@@ -4,7 +4,7 @@ import java.io.IOException;
 
 public interface ReadableSource {
 	default void readSector(long sectorNumber, byte[] buffer, int bufferOffset) throws IOException {
-		readSectors(sectorNumber, 1, buffer, 0);
+		readSectors(sectorNumber, 1, buffer, bufferOffset);
 	}
 	
 	default void readSector(long sectorNumber, byte[] buffer) throws IOException {
