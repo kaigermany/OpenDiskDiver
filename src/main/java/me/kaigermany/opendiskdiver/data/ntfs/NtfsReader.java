@@ -46,10 +46,11 @@ public class NtfsReader implements Reader, FileSystem {
 	}
 	
 	public static class NtfsFileEntry extends FileEntry{
-		private NtfsNode node;
+		private final NtfsNode node;
 		
 		public NtfsFileEntry(String nameAndPath, NtfsNode node) {
 			super(node.Name, nameAndPath, node.Size, node.lastEdited);
+			this.node = node;
 		}
 
 		@Override
