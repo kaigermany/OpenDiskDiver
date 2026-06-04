@@ -386,7 +386,7 @@ public class FatReader implements Reader, FileSystem {
 				System.out.println(DumpUtils.binaryDumpToString(dump));
 			}
 			*/
-			source.readSectors(clusterHeapOffset + ((cluster & 0xFFFFFFFFL) * (long)clusterSize), clusterSize, clusterBuffer);
+			source.readSectors(clusterHeapOffset + ((cluster & 0xFFFFFFFFL) * clusterSize), clusterSize, clusterBuffer);
 			cluster = fat.get(cluster);//fat[cluster];
 			int len = Math.min(out.length - wp, clusterBuffer.length);
 			//System.out.println("len="+len);
@@ -829,9 +829,8 @@ public class FatReader implements Reader, FileSystem {
 	}
 	
 	private static void readDirDirect(ReadableSource source, int[] clustors, int bytesPerClustor, long offsetFix, Dir dir,
-			ArrayList<FatFile> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries, byte[] container) throws IOException {
+			ArrayList<FatFile> files, int[] clustorMap, FatType type, boolean readDetetedEntrys, HashSet<Long> doneDirEntries, byte[] container) {
 		
-//readDetetedEntrys = true;
 		
 		int numBytes = clustors.length * bytesPerClustor;
 		//System.out.println(DumpUtils.binaryDumpToString(container));

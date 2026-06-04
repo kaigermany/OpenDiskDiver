@@ -90,7 +90,7 @@ public class CopyFunction {
 					ui.onDiskCopyStateUpdate(state);
 				}catch(IOException blockReadError){
 					//block read failed, try single sector read mode
-					byte[] dummyBuffer = new byte[512];
+					//byte[] dummyBuffer = new byte[512];
 					byte[] readBuffer = new byte[512];
 					for(int offset=0; offset<numSectorsToRead; offset++){
 						state.setCurrentSector(pos + offset);
