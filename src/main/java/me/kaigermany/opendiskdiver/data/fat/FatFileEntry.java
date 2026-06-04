@@ -13,8 +13,8 @@ public class FatFileEntry extends FileEntry {
 	private final ReadableSource source;
 	private final long dataOffset;
 	
-	public FatFileEntry(FatFile e, ReadableSource source, long clustorSizeInBytes, long dataOffset) {
-		super(e.nameOnly, e.name, e.fileSize, e.age);
+	public FatFileEntry(FatFile e, ReadableSource source, long clustorSizeInBytes, long dataOffset, boolean isDeleted) {
+		super(e.nameOnly, e.name, e.fileSize, e.age, isDeleted);
 		this.clustorList = e.clustors;
 		this.source = source;
 		this.bytesPerClustor = clustorSizeInBytes;

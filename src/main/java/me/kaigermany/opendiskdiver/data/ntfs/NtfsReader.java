@@ -50,7 +50,7 @@ public class NtfsReader implements Reader, FileSystem {
 		private final NtfsNode node;
 		
 		public NtfsFileEntry(String nameAndPath, NtfsNode node) {
-			super(node.Name, nameAndPath, node.Size, node.lastEdited);
+			super(node.Name, nameAndPath, node.Size, node.lastEdited, node.isDeleted);
 			this.node = node;
 		}
 
@@ -198,7 +198,10 @@ public class NtfsReader implements Reader, FileSystem {
 		if(nodeIndex == -1) nodeIndex = storedIndex & 0xFFFFFFFFL;//this only may get a problem if we have more then ((1 << 32) - 1) entries.
 		
         NtfsNode node = new NtfsNode(nodeIndex, config, source);
-        
+
+        if ((Flags & 1) == 0) {
+        	node.isDeleted = true;
+        }
         if ((Flags & 2) == 2) {
         	node.isDir = true;
         }

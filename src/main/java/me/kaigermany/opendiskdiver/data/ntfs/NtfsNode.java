@@ -25,6 +25,8 @@ public class NtfsNode {
 	
 	private NtfsConfig config;
 	private ReadableSource source;
+
+	public boolean isDeleted;
 	
 	public HashMap<String, byte[]> fileBytes = new HashMap<String, byte[]>();//used when data is sooo small that it fits into the mft file entry and don't require any clusters on disk.
 	

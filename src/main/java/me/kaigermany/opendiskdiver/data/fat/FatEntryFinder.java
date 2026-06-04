@@ -57,7 +57,8 @@ public class FatEntryFinder {
 					int[] objCoustors = new int[]{fileIndex};
 					int age = 0;
 					String fname = sb.toString();
-					out.add(new FatReader.FatFile(new FatReader.Dir("LOST_AND_FOUND/"), fname, age, objCoustors, fileSize));
+					final boolean isDeleted = false;
+					out.add(new FatReader.FatFile(new FatReader.Dir("LOST_AND_FOUND/"), fname, age, objCoustors, fileSize, isDeleted));
 			
 				} else {
 					System.out.println("testNameBoundries() -> false.");

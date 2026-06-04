@@ -7,18 +7,22 @@ import java.nio.ByteOrder;
 import me.kaigermany.opendiskdiver.utils.ByteArrayUtils;
 
 public class RawNtfsNode {
-	private byte[] data;
 	private final boolean tryParseDeletedNodes;
+	private final byte[] data;
+	private final boolean isNodeInUse;
+	
 	public RawNtfsNode(byte[] mftEntryBytes, NtfsConfig config, boolean tryParseDeletedNodes) throws IOException {
 		fixupRawMftdata(mftEntryBytes, config);
 		this.data = mftEntryBytes;
 		this.tryParseDeletedNodes = tryParseDeletedNodes;
+		
+		int Flags = ByteArrayUtils.read16(data, 22);
+		isNodeInUse = (Flags & 1) == 1;
 	}
 	
 	public boolean isActiveEntry() {//is node in use?
 		if(tryParseDeletedNodes) return true;
-		int Flags = ByteArrayUtils.read16(data, 22);
-		return (Flags & 1) == 1;
+		return isNodeInUse;
 	}
 
 	public boolean isValid(int length) throws IOException {
@@ -43,6 +47,10 @@ public class RawNtfsNode {
 
 	public byte[] getData() {
 		return data;
+	}
+	
+	public boolean isMarkedAsDeleted(){
+		return !isNodeInUse;
 	}
 	
 	private static void fixupRawMftdata(byte[] mft, NtfsConfig config) throws IOException {

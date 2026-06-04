@@ -108,8 +108,10 @@ public class FatReader implements Reader, FileSystem {
 		private final boolean isContinousFileStream;
 		
 		public ExFatFile(String name, String nameAndPath, long size, long age, 
-				ExFatEntryObject file, ExFatChainTable fat, int clusterSize, long clusterHeapOffset, ReadableSource source, boolean isContinousFileStream) {
-			super(name, nameAndPath, size, age);
+				ExFatEntryObject file, ExFatChainTable fat, int clusterSize,
+				long clusterHeapOffset, ReadableSource source, boolean isContinousFileStream,
+				boolean isDeletedEntry) {
+			super(name, nameAndPath, size, age, isDeletedEntry);
 			this.file = file;
 			this.fat = fat;
 			this.clusterSize = clusterSize;
@@ -342,12 +344,12 @@ public class FatReader implements Reader, FileSystem {
 						if(!currentObject.isDir){
 							exFatFiles.add(new ExFatFile(extend.name, fullName, extend.validDataLen,
 									currentObject.timeLastModified, currentObject, fat, clusterSize,
-									clusterHeapOffset, source, extend.isContinousFileStream));
+									clusterHeapOffset, source, extend.isContinousFileStream, isDeletedEntry));
 						} else {
 							if(parseDeletedEntries){
 								exFatFiles.add(new ExFatFile(DELETED_DIRECTOY_NAME_PREFIX + extend.name, path + "/" + DELETED_DIRECTOY_NAME_PREFIX + extend.name, extend.validDataLen,
 										currentObject.timeLastModified, currentObject, fat, clusterSize,
-										clusterHeapOffset, source, extend.isContinousFileStream));
+										clusterHeapOffset, source, extend.isContinousFileStream, isDeletedEntry));
 							}
 						}
 						
@@ -622,7 +624,7 @@ public class FatReader implements Reader, FileSystem {
 		} else {
 			ArrayList<FileEntry> list = new ArrayList<>(files.size());
 			for(FatFile e : files){
-				list.add(new FatFileEntry(e, source, bytesPerClustor, fat32dataOffset));
+				list.add(new FatFileEntry(e, source, bytesPerClustor, fat32dataOffset, e.isDeleted));
 			}
 			return list;
 		}
@@ -933,7 +935,7 @@ public class FatReader implements Reader, FileSystem {
 					if(ATTR_DIRECTORY){
 						name = DELETED_DIRECTOY_NAME_PREFIX + name;
 					}
-					files.add(new FatFile(dir, name, timeModified, objCoustors, fileSize));
+					files.add(new FatFile(dir, name, timeModified, objCoustors, fileSize, isDeletedFile));
 				}
 			}
 		}
@@ -954,13 +956,15 @@ public class FatReader implements Reader, FileSystem {
 		public int[] clustors;
 		public int fileSize;
 		public String nameOnly;
+		public boolean isDeleted;
 		
-		public FatFile(Dir dir, String fname, long age, int[] clustors, int fileSize) {
+		public FatFile(Dir dir, String fname, long age, int[] clustors, int fileSize, boolean isDeleted) {
 			this.age = age;
 			this.clustors = clustors;
 			this.fileSize = fileSize;
 			this.name = dir.path + fname;
 			this.nameOnly = fname;
+			this.isDeleted = isDeleted;
 		}
 
 		@Override
