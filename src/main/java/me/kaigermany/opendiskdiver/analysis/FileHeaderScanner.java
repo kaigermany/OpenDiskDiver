@@ -7,7 +7,7 @@ public class FileHeaderScanner implements Scanner {
 	public void scan(byte[] nextSector, long sectorOffset, BiConsumer<Scanner, String> logger) {
 		String type = classify(nextSector);
 		if(type != null){
-			logger.accept(this, "Found file header: " + type);
+			logger.accept(this, "Found file header: " + type + " at Sector " + sectorOffset);
 			System.out.println(type + " -> " + new String(nextSector, 0, 12));
 		}
 	}
@@ -75,7 +75,9 @@ public class FileHeaderScanner implements Scanner {
 				break;
 			}
 			case 'G':{
-				if(sector[1] == 'I' && sector[2] == 'F') return "GIF";
+				if(sector[1] == 'I' && sector[2] == 'F' && sector[3] == '8' && sector[5] == 'a') {
+					if(sector[4] == '7' || sector[4] == '9') return "GIF";
+				}
 				break;
 			}
 			case '[':{//"[InternetShortcut]"
