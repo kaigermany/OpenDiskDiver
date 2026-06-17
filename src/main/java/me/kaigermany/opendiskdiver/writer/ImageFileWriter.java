@@ -2,17 +2,30 @@ package me.kaigermany.opendiskdiver.writer;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 
 public class ImageFileWriter implements Writer {
 	public ImageFileWriter(){}
 	
-	private DirectFileOutputStream outputStream;
+	private OutputStream outputStream;
 
 	@Override
 	public void create(File file, ReadableSource readerReference) throws IOException {
-		outputStream = new DirectFileOutputStream(file);
+		if(file.toString().equals("/dev/null") || file.toString().endsWith("\\dev\\null")){
+			//create a dummy instance that ignores ANY interaction.
+			outputStream = new OutputStream() {
+				@Override
+				public void write(int ignoreMe) throws IOException {}
+				@Override
+				public void write(byte[] ignoreThisBuffer) throws IOException {}
+				@Override
+				public void write(byte[] ignoreThisBuffer, int ignoreThisOffset, int ignoreThisLength) throws IOException {}
+			};
+		} else {
+			outputStream = new DirectFileOutputStream(file);
+		}
 	}
 
 	@Override
