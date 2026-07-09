@@ -5,10 +5,14 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
+import me.kaigermany.opendiskdiver.writer.DirectDiskWriter;
+
 public class DirectDiskReader implements ReadableSource, Closeable {
+	private final String path;
 	private RandomAccessFile raf;
 	private long numSectors;
 	public DirectDiskReader(String path, long numBytes) throws FileNotFoundException {
+		this.path = path;
 		raf = new RandomAccessFile(path, "r");
 		numSectors = numBytes / 512;
 	}
@@ -33,5 +37,9 @@ public class DirectDiskReader implements ReadableSource, Closeable {
 	@Override
 	public long numSectors() {
 		return numSectors;
+	}
+	
+	public DirectDiskWriter openWriter() throws FileNotFoundException {
+		return new DirectDiskWriter(path, numSectors * 512);
 	}
 }
