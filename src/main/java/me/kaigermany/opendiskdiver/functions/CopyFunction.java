@@ -8,6 +8,7 @@ import me.kaigermany.opendiskdiver.gui.UI;
 import me.kaigermany.opendiskdiver.reader.ReadableSource;
 import me.kaigermany.opendiskdiver.utils.Utils;
 import me.kaigermany.opendiskdiver.writer.ImageFileWriter;
+import me.kaigermany.opendiskdiver.writer.MultipartZipFileWriter;
 import me.kaigermany.opendiskdiver.writer.Writer;
 import me.kaigermany.opendiskdiver.writer.ZipFileWriter;
 
@@ -16,6 +17,7 @@ public class CopyFunction {
 		int type = ui.chooseFromList("Please select an output file type:", new String[]{
 				".img - raw disk image",
 				".zip - zip file with blocks of compressed sectors",
+				".zip - zip file with blocks but 4GB-splitted archives",
 				"Abort"
 		});
 		Writer writer = null;
@@ -28,7 +30,11 @@ public class CopyFunction {
 				writer = new ZipFileWriter();
 				break;
 			}
-			case 2: return;
+			case 2: {
+				writer = new MultipartZipFileWriter();
+				break;
+			}
+			case 3: return;
 		}
 		
 		File outFile = null;

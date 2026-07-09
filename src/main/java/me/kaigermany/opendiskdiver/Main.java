@@ -35,6 +35,7 @@ import me.kaigermany.opendiskdiver.utils.Utils;
 public class Main {
 	public static void main(String[] args) {
 		final UI ui = createUI(false);
+		
 		while(true){
 			int id = ui.chooseFromList("Welcome! Please choose your operation mode:", new String[]{
 					"Anaylze a drive",
@@ -129,7 +130,7 @@ public class Main {
 					}
 					case 3:{
 						diskAnalyzerMode(source, ui);
-						break;
+						continue;
 					}
 					case 4:
 						CopyFunction.copySource(source, ui);
