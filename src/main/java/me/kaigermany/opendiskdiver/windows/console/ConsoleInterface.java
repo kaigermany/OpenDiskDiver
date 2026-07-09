@@ -156,6 +156,7 @@ public class ConsoleInterface {
 			return dis.read() == 1;
 		} catch (IOException e) {
 			e.printStackTrace();
+			close();
 		}
 		return false;
 	}
