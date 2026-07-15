@@ -146,7 +146,7 @@ public class FileSystemBrowser {
 					dumpSortedFiles(ui, files);
 					break;
 				case 3:
-					exportAllFiles(ui, fs, files);
+					exportAllFiles(ui, files);
 					break;
 				case 4: return;
 			}
@@ -200,7 +200,7 @@ public class FileSystemBrowser {
 		}
 	}
 	
-	private static void exportAllFiles(UI ui, FileSystem fs, List<FileEntry> files) {
+	private static void exportAllFiles(UI ui, List<FileEntry> files) {
 		switch (ui.chooseFromList("Export " + files.size() + " files as *.zip?", new String[]{
 				"Yes",
 				"Abort"
